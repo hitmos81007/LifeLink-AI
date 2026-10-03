@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "User profiles and role metadata for LifeLink AI",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["Patient", "Hospital", "Blood Bank", "Ambulance", "Government"] },
+        "roleDetails": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "blood_requests": {
+      "title": "Blood Requests",
+      "description": "Emergency blood requisitions across hospitals and blood banks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "requesterUid": { "type": "string" },
+        "patientName": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "unitsNeeded": { "type": "number" },
+        "hospitalName": { "type": "string" },
+        "urgency": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "FULFILLED", "IN_TRANSIT", "CANCELLED"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "bloodGroup", "unitsNeeded", "status"]
+    },
+    "bed_inventories": {
+      "title": "Bed Inventories",
+      "description": "Real-time hospital ICU and ventilator capacity",
+      "type": "object",
+      "properties": {
+        "hospitalId": { "type": "string" },
+        "hospitalName": { "type": "string" },
+        "icuAvailable": { "type": "number" },
+        "icuTotal": { "type": "number" },
+        "ventilatorAvailable": { "type": "number" },
+        "erAvailable": { "type": "number" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["hospitalId", "hospitalName"]
+    }
+  }
+}
