@@ -16,7 +16,6 @@ import {
   Home
 } from 'lucide-react';
 
-import { QuickDemoRoleSwitcher } from '../common/QuickDemoRoleSwitcher';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -33,6 +32,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
       case 'blood_bank_admin': return <Droplets className="w-4 h-4 text-red-500" />;
       case 'ambulance_admin': return <Ambulance className="w-4 h-4 text-amber-500" />;
       case 'government_admin': return <ShieldCheck className="w-4 h-4 text-emerald-500" />;
+      case 'platform_admin': return <ShieldCheck className="w-4 h-4 text-violet-500" />;
       case 'clinician_reviewer': return <Stethoscope className="w-4 h-4 text-teal-500" />;
       case 'hospital_approver': return <ArrowRightLeft className="w-4 h-4 text-indigo-500" />;
       default: return <ShieldCheck className="w-4 h-4 text-slate-500" />;
@@ -46,6 +46,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
       case 'blood_bank_admin': return 'bg-red-50 dark:bg-red-950/60 border-red-200 dark:border-red-800/80 text-red-800 dark:text-red-300';
       case 'ambulance_admin': return 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/80 text-amber-800 dark:text-amber-300';
       case 'government_admin': return 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300';
+      case 'platform_admin': return 'bg-violet-50 dark:bg-violet-950/60 border-violet-200 dark:border-violet-800/80 text-violet-800 dark:text-violet-300';
       case 'clinician_reviewer': return 'bg-teal-50 dark:bg-teal-950/60 border-teal-200 dark:border-teal-800/80 text-teal-800 dark:text-teal-300';
       case 'hospital_approver': return 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-800/80 text-indigo-800 dark:text-indigo-300';
       default: return 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-300';
@@ -81,11 +82,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
             </div>
           </div>
 
-          {/* User Profile Badge & Role Switcher */}
+          {/* Authenticated User Profile */}
           <div className="flex items-center space-x-2.5">
-            {/* Quick 1-Click Role Switcher */}
-            <QuickDemoRoleSwitcher />
-
             <div className={`hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-xs font-semibold ${getRoleBadgeStyle(activeRole)}`}>
               {getRoleIcon(activeRole)}
               <span>{displayLabel}</span>

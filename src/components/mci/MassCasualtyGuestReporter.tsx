@@ -23,7 +23,10 @@ import {
   reportMassCasualtyIncident,
   MciHazardType,
   MciTriageCount,
-  MciIncidentReport
+  MciIncidentReport,
+  createEmptyMciTriageCounts,
+  createSyntheticMciExampleCounts,
+  SYNTHETIC_MCI_LOCATION
 } from '../../services/massCasualtyService';
 
 interface MassCasualtyGuestReporterProps {
@@ -77,24 +80,10 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
   const [hazardType, setHazardType] = useState<MciHazardType>(
     'Multi-Vehicle Collision / Highway Pileup'
   );
-  const [locationName, setLocationName] = useState('National Expressway Sector 12 Flyover');
-  const [coords, setCoords] = useState<{ lat: number; lng: number }>({
-    lat: 28.6180,
-    lng: 77.2150
-  });
-
-  const [triage, setTriage] = useState<MciTriageCount>({
-    red: 4,
-    yellow: 6,
-    green: 8,
-    black: 0
-  });
-
-  const [reporterName, setReporterName] = useState('');
-  const [reporterPhone, setReporterPhone] = useState('');
-  const [sceneNotes, setSceneNotes] = useState('');
+  const [triage, setTriage] = useState<MciTriageCount>(createEmptyMciTriageCounts);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [activeReport, setActiveReport] = useState<MciIncidentReport | null>(null);
 
   if (!isOpen) return null;
@@ -110,23 +99,18 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
 
   const handleFastReportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError('');
     setIsSubmitting(true);
 
     try {
       const report = await reportMassCasualtyIncident({
         hazard_type: hazardType,
-        reporter_name: reporterName.trim() || undefined,
-        reporter_phone: reporterPhone.trim() || undefined,
-        location_name: locationName,
-        latitude: coords.lat,
-        longitude: coords.lng,
-        triage,
-        scene_notes: sceneNotes.trim() || undefined
+        triage
       });
 
       setActiveReport(report);
-    } catch (err: any) {
-      alert('Error submitting mass casualty report: ' + err.message);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Unable to run the local simulation.');
     } finally {
       setIsSubmitting(false);
     }
@@ -159,10 +143,10 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
         name: h.hospital_name,
         type: 'hospital',
         location: {
-          lat: activeReport.latitude + (h.hospital_id === 'hosp-01' ? 0.015 : -0.02),
-          lng: activeReport.longitude + (h.hospital_id === 'hosp-01' ? 0.012 : 0.018)
+          lat: h.latitude,
+          lng: h.longitude
         },
-        address: `${h.distance_km} km away (~${h.eta_minutes} mins ETA)`,
+        address: `${h.distance_km} km straight-line example distance`,
         details: {
           traumaLevel: h.trauma_center ? 'Level 1 Regional Trauma' : 'Emergency Center',
           icuBeds: h.open_icu_beds,
@@ -173,21 +157,21 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
       });
     });
 
-    // Dispatched Ambulances
-    activeReport.dispatched_ambulances.forEach((a, idx) => {
+    // Example vehicle positions are illustrative and are never dispatched.
+    activeReport.example_ambulances.forEach((a) => {
       mapEntities.push({
         id: a.ambulance_id,
         name: `Unit ${a.vehicle_number} (${a.ambulance_type})`,
         type: 'ambulance',
         location: {
-          lat: activeReport.latitude + (idx === 0 ? 0.005 : idx === 1 ? -0.006 : 0.008),
-          lng: activeReport.longitude + (idx === 0 ? -0.004 : idx === 1 ? 0.005 : -0.007)
+          lat: a.latitude,
+          lng: a.longitude
         },
-        address: `En route to scene (~${a.eta_minutes} mins)`,
+        address: 'Example vehicle position • not en route',
         details: {
           vehicleId: a.vehicle_number,
           driverName: a.driver_name,
-          status: 'DISPATCHED TO MCI SCENE'
+          status: 'SIMULATED ALLOCATION ONLY'
         }
       });
     });
@@ -216,11 +200,11 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
                 Mass Casualty Incident (MCI) Fast Report
               </h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-red-950 text-red-300 border border-red-700">
-                GUEST MODE • LOW LATENCY
+                LOCAL SIMULATION ONLY
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Rapid disaster triage intake & automated multi-hospital evacuation distribution
+              Test a synthetic scenario. Nothing is reported, broadcast, or dispatched.
             </p>
           </div>
         </div>
@@ -233,26 +217,26 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
                 <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
                 <div>
                   <h3 className="text-base font-black text-white">
-                    Disaster Alert Broadcast Active: {activeReport.incident_code}
+                    Simulation complete: {activeReport.incident_code}
                   </h3>
                   <p className="text-xs text-emerald-300 mt-0.5">
-                    Multi-hospital incident response engaged. {activeReport.dispatched_ambulances.length} ambulances dispatched to scene.
+                    Synthetic allocation shown. No alert was sent and no ambulance was dispatched.
                   </p>
                 </div>
               </div>
               <span className="px-3 py-1 bg-emerald-900 text-emerald-200 border border-emerald-700 rounded-xl font-mono text-xs font-bold">
-                COMMAND ACTIVE
+                DEMO ONLY
               </span>
             </div>
 
-            {/* Leaflet Disaster Radius & Multi-Facility Route Map */}
+            {/* Illustrative synthetic scenario map */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-300">
                 <span className="flex items-center gap-1.5 text-red-400">
-                  <Activity className="w-4 h-4" /> Live Disaster Radius &amp; Multi-Hospital Evacuation Map
+                  <Activity className="w-4 h-4" /> Illustrative MCI Scenario Map
                 </span>
                 <span className="text-[11px] font-mono text-slate-400">
-                  OpenStreetMap • 3 km Blast Radius
+                  OpenStreetMap • 2.5 km example radius
                 </span>
               </div>
               <LeafletEmergencyMap
@@ -266,18 +250,20 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
               />
             </div>
 
-            {/* Multi-Hospital Evacuation Distribution Matrix */}
+            {/* Example resource distribution */}
             <div className="space-y-3">
               <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-blue-400" /> Multi-Hospital Patient Allocation Breakdown
+                <Building2 className="w-4 h-4 text-blue-400" /> Illustrative Resource Allocation
               </h4>
+              <p className="text-[11px] text-slate-400">Example distribution based on fictional capacity values; this is not a clinical recommendation or admission.</p>
+              {(activeReport.unallocated.red + activeReport.unallocated.yellow + activeReport.unallocated.green) > 0 && <div role="status" className="rounded-xl border border-amber-700 bg-amber-950/60 p-3 text-xs text-amber-200"><strong>Illustrative capacity exceeded.</strong> Not represented as allocated: {activeReport.unallocated.red} RED, {activeReport.unallocated.yellow} YELLOW, and {activeReport.unallocated.green} GREEN. No real facility has been contacted.</div>}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {activeReport.hospital_allocations.map(h => (
                   <div key={h.hospital_id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-white text-sm">{h.hospital_name}</span>
                       <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-mono font-bold">
-                        {h.distance_km} km (~{h.eta_minutes}m)
+                        {h.distance_km} km • ~{h.eta_minutes}m illustrative estimate
                       </span>
                     </div>
 
@@ -300,17 +286,17 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
               </div>
             </div>
 
-            {/* Dispatched Ambulances */}
+            {/* Example vehicle allocation */}
             <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
               <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Truck className="w-4 h-4 text-emerald-400" /> Dispatched Ambulance Units ({activeReport.dispatched_ambulances.length})
+                <Truck className="w-4 h-4 text-emerald-400" /> Example Ambulances ({activeReport.example_ambulances.length})
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {activeReport.dispatched_ambulances.map(a => (
+                {activeReport.example_ambulances.map(a => (
                   <div key={a.ambulance_id} className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-xs space-y-0.5">
                     <div className="flex justify-between font-bold text-white">
                       <span>{a.vehicle_number}</span>
-                      <span className="text-emerald-400 font-mono">~{a.eta_minutes}m ETA</span>
+                      <span className="text-emerald-400 font-mono">~{a.eta_minutes}m illustrative estimate</span>
                     </div>
                     <p className="text-[11px] text-slate-400">{a.driver_name} ({a.ambulance_type})</p>
                   </div>
@@ -336,6 +322,10 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
         ) : (
           /* REPORT INTAKE FORM */
           <form onSubmit={handleFastReportSubmit} className="space-y-6">
+            <div className="rounded-xl border border-amber-700 bg-amber-950/50 p-3 text-xs text-amber-200">
+              Simulation only. Use fictional scenario details. This tool does not contact emergency services or update hospital systems.
+            </div>
+            {submitError && <p role="alert" className="rounded-xl border border-red-700 bg-red-950/60 p-3 text-xs text-red-200">{submitError}</p>}
             {/* Step 1: Hazard Selection */}
             <div className="space-y-2">
               <label className="text-xs font-black text-slate-200 uppercase tracking-wider block">
@@ -368,9 +358,15 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
                 <label className="text-xs font-black text-slate-200 uppercase tracking-wider">
                   2. Casualty Estimation &amp; START Triage Breakdown
                 </label>
-                <span className="text-xs font-mono font-bold text-red-400">
-                  Total Estimated: <strong className="text-white text-sm">{totalVictims}</strong> victims
-                </span>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => setTriage(createSyntheticMciExampleCounts())}
+                    className="text-[11px] font-bold text-blue-300 hover:text-white underline underline-offset-2">
+                    Load synthetic example
+                  </button>
+                  <span className="text-xs font-mono font-bold text-red-400">
+                    Total Estimated: <strong className="text-white text-sm">{totalVictims}</strong> victims
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -426,90 +422,37 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
                   </div>
                 </div>
               </div>
+              {totalVictims === 0 && <p className="text-[11px] text-slate-400">Counts start at zero. Enter fictional scenario counts or load the synthetic example to continue.</p>}
             </div>
 
-            {/* Step 3: Location Pin-Drop via Leaflet */}
+            {/* Step 3: Fixed synthetic demo location */}
             <div className="space-y-2">
               <label className="text-xs font-black text-slate-200 uppercase tracking-wider block">
-                3. Incident Location &amp; Interactive Pin-Drop
+                3. Fixed Synthetic Scenario Location
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  required
-                  value={locationName}
-                  onChange={(e) => setLocationName(e.target.value)}
-                  placeholder="e.g., National Expressway Sector 12 Flyover"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white"
-                />
-                <div className="flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-950 p-2.5 rounded-xl border border-slate-700">
-                  <MapPin className="w-4 h-4 text-rose-500" />
-                  <span>Lat: {coords.lat.toFixed(4)}, Lng: {coords.lng.toFixed(4)}</span>
-                </div>
+              <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-700">
+                <MapPin className="w-4 h-4 text-rose-500" />
+                <span>{SYNTHETIC_MCI_LOCATION.name}. Location is fixed for demonstration and cannot be edited.</span>
               </div>
 
-              {/* Interactive Map */}
+              {/* Illustrative map centered on the fixed synthetic point */}
               <LeafletEmergencyMap
-                center={[coords.lat, coords.lng]}
+                center={[SYNTHETIC_MCI_LOCATION.latitude, SYNTHETIC_MCI_LOCATION.longitude]}
                 zoom={14}
                 height="220px"
-                selectableLocation={true}
-                selectedLocation={coords}
-                onLocationSelect={(loc) => {
-                  setCoords({ lat: loc.lat, lng: loc.lng });
-                  if (loc.address) setLocationName(loc.address);
-                }}
               />
             </div>
 
-            {/* Step 4: Scene Notes & Optional Reporter Contact */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-300">
-                  Scene Notes / Constraints (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  value={sceneNotes}
-                  onChange={(e) => setSceneNotes(e.target.value)}
-                  placeholder="e.g., 3-vehicle pileup, traffic blocked, fuel leakage hazard..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">
-                    Reporter Name / Phone (Optional - Guest Mode)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={reporterName}
-                      onChange={(e) => setReporterName(e.target.value)}
-                      placeholder="Your Name (Optional)"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-                    />
-                    <input
-                      type="tel"
-                      value={reporterPhone}
-                      onChange={(e) => setReporterPhone(e.target.value)}
-                      placeholder="Phone (Optional)"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <p className="text-[11px] text-slate-400">No reporter contact details, scene addresses, GPS pins, or free-text medical notes are collected. Results stay in this browser as a local demonstration.</p>
 
             {/* 1-Tap Trigger Button */}
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="w-full py-4 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
+              disabled={isSubmitting || totalVictims === 0}
+              className="w-full py-4 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-red-600 disabled:from-slate-700 disabled:via-slate-700 disabled:to-slate-700 disabled:shadow-none disabled:cursor-not-allowed text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-red-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
             >
               <Send className="w-5 h-5" />
-              <span>{isSubmitting ? 'Computing Multi-Hospital Distribution...' : '⚡ Trigger 1-Tap Mass Casualty Emergency Dispatch'}</span>
+              <span>{isSubmitting ? 'Running local simulation...' : 'Run synthetic MCI simulation'}</span>
             </button>
           </form>
         )}

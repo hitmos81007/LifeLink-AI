@@ -19,6 +19,8 @@ export const LoginPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const displayedError = localError || authError;
+  const confirmationRequired = Boolean(displayedError?.includes('Email not confirmed'));
 
   const handleResendConfirmation = async () => {
     if (!email) {
@@ -100,23 +102,25 @@ export const LoginPage: React.FC = () => {
           )}
 
           {(localError || authError) && (
-            <div className="bg-rose-950/80 border border-rose-800 text-rose-200 p-3 rounded-xl text-xs space-y-2 animate-in fade-in">
+            <div className={`${confirmationRequired ? 'bg-emerald-950/80 border-emerald-800 text-emerald-200' : 'bg-rose-950/80 border-rose-800 text-rose-200'} border p-3 rounded-xl text-xs space-y-2 animate-in fade-in`}>
               <div className="flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                {confirmationRequired
+                  ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  : <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />}
                 <div>
-                  <p className="font-bold">Authentication Failed</p>
-                  <p className="text-[11px] text-rose-300">{localError || authError}</p>
+                  <p className="font-bold">{confirmationRequired ? 'Email confirmation required' : 'Authentication Failed'}</p>
+                  <p className={`text-[11px] ${confirmationRequired ? 'text-emerald-300' : 'text-rose-300'}`}>{displayedError}</p>
                 </div>
               </div>
 
-              {((localError && localError.includes('Email not confirmed')) || (authError && authError.includes('Email not confirmed'))) && (
-                <div className="pt-2 border-t border-rose-800/80 space-y-2">
+              {confirmationRequired && (
+                <div className="pt-2 border-t border-emerald-800/80 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-rose-300/90 font-medium">Need another confirmation link?</span>
+                    <span className="text-[10px] text-emerald-300/90 font-medium">Need another confirmation link?</span>
                     <button
                       type="button"
                       onClick={handleResendConfirmation}
-                      className="px-2.5 py-1 bg-rose-900 hover:bg-rose-800 text-white rounded text-[10px] font-bold cursor-pointer transition-all border border-rose-700"
+                      className="px-2.5 py-1 bg-emerald-900 hover:bg-emerald-800 text-white rounded text-[10px] font-bold cursor-pointer transition-all border border-emerald-700"
                     >
                       Resend Link
                     </button>
@@ -199,7 +203,7 @@ export const LoginPage: React.FC = () => {
         <div className="mt-4 text-center">
           <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1.5 font-mono">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            256-bit AES Encryption • Supabase Auth
+            Supabase Auth • PostgreSQL row-level security
           </p>
         </div>
 

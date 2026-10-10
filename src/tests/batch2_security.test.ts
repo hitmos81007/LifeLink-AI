@@ -1,24 +1,52 @@
 import { describe, it, expect } from 'vitest';
 import { calculateOperationalPriorityScore } from '../services/emergencyCaseService';
 import { UserRole } from '../types/database';
+import { hasCapability, PUBLIC_ROLE_OPTIONS } from '../types/roles';
+import { calculateIcuCommittedRate } from '../services/analyticsService';
 
 describe('Batch 2 Security and Authority Tests', () => {
+  describe('Prototype analytics', () => {
+    it('counts reserved ICU beds as committed capacity', () => {
+      expect(calculateIcuCommittedRate([
+        { total_icu_beds: 10, occupied_icu_beds: 4, reserved_icu_beds: 2 },
+        { total_icu_beds: 10, occupied_icu_beds: 3, reserved_icu_beds: 1 }
+      ])).toBe(50);
+    });
+
+    it('returns no rate when no ICU capacity is recorded', () => {
+      expect(calculateIcuCommittedRate([])).toBeNull();
+      expect(calculateIcuCommittedRate([{ total_icu_beds: 0, occupied_icu_beds: 0, reserved_icu_beds: 0 }])).toBeNull();
+    });
+  });
+
   describe('Canonical Roles (GAP-61)', () => {
-    it('should strictly contain all 7 canonical roles', () => {
+    it('should strictly contain all 8 canonical roles', () => {
       const canonicalRoles: UserRole[] = [
         'patient',
         'hospital_admin',
         'blood_bank_admin',
         'ambulance_admin',
         'government_admin',
+        'platform_admin',
         'clinician_reviewer',
         'hospital_approver'
       ];
 
-      expect(canonicalRoles).toHaveLength(7);
+      expect(canonicalRoles).toHaveLength(8);
       expect(canonicalRoles).toContain('ambulance_admin');
       // Verify ambulance_driver is NOT in canonical roles list
       expect(canonicalRoles.includes('ambulance_driver' as any)).toBe(false);
+    });
+
+    it('does not expose oversight or approval roles to public signup', () => {
+      const publicRoles = PUBLIC_ROLE_OPTIONS.map(({ role }) => role);
+      expect(publicRoles).not.toContain('government_admin');
+      expect(publicRoles).not.toContain('platform_admin');
+      expect(publicRoles).not.toContain('clinician_reviewer');
+      expect(publicRoles).not.toContain('hospital_approver');
+      expect(hasCapability('platform_admin', 'manage_demo_account_roles')).toBe(true);
+      expect(hasCapability('patient', 'manage_demo_account_roles')).toBe(false);
+      expect(publicRoles).toContain('patient');
     });
   });
 

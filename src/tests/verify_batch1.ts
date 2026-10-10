@@ -46,6 +46,7 @@ async function runVerification() {
   const publicRoles = PUBLIC_ROLE_OPTIONS.map((r) => r.role);
   assert(!publicRoles.includes('clinician_reviewer'), '11. Clinician Reviewer is absent from public signup options');
   assert(!publicRoles.includes('hospital_approver'), '12. Hospital Approver is absent from public signup options');
+  assert(!publicRoles.includes('government_admin'), '12a. Government Admin is absent from public signup options');
   assert(publicRoles.includes('patient'), '13. Patient is available in public signup options');
   assert(publicRoles.includes('hospital_admin'), '14. Hospital Admin is available in public signup options');
 

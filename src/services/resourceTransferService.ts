@@ -4,11 +4,6 @@ import {
   TransferResourceType,
   TransferStatus
 } from '../types/database';
-import {
-  getHospitalUserIds,
-  getGovernmentUserIds,
-  notifyUsers
-} from './notificationService';
 
 export interface CreateTransferParams {
   source_hospital_id: string;
@@ -16,8 +11,17 @@ export interface CreateTransferParams {
   resource_type: TransferResourceType;
   resource_name: string;
   quantity: number;
-  remarks?: string;
+  resource_identity?: {
+    resource_type: 'Oxygen' | 'Medicine';
+    name: string;
+    unit: string | null;
+    category?: string | null;
+    dosage?: string | null;
+    manufacturer?: string | null;
+    expiry_date?: string | null;
+  } | null;
   operator_id?: string;
+  idempotency_key?: string;
 }
 
 /**
@@ -34,9 +38,11 @@ export async function createTransferRequest(
     resource_type,
     resource_name,
     quantity,
-    remarks,
-    operator_id
+    resource_identity,
+    operator_id,
+    idempotency_key
   } = params;
+  void operator_id; // Notification recipients are resolved by trusted Supabase workflow functions.
 
   // 1. Rule: Source hospital must be present
   if (!source_hospital_id) {
@@ -49,43 +55,21 @@ export async function createTransferRequest(
   }
 
   // 3. Rule: Quantity must be greater than zero
-  if (!quantity || quantity <= 0) {
-    return { success: false, error: 'Transfer quantity must be greater than zero.' };
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+    return { success: false, error: 'Transfer quantity must be a positive whole number.' };
   }
 
-  // 4. Rule: Do not allow a transfer that violates protected stock
+  // Creation authority and source hospital identity are derived from auth.uid() in PostgreSQL.
   try {
-    const isAvailable = await checkProtectedStockAvailability(
-      source_hospital_id,
-      resource_type,
-      resource_name,
-      quantity
-    );
-
-    if (!isAvailable.allowed) {
-      return { success: false, error: isAvailable.reason };
-    }
-  } catch (err: any) {
-    console.warn('[Validation Notice] Protected stock check warning:', err?.message || err);
-  }
-
-  // 5. Database Insert: Let PostgreSQL generate transfer_id and timestamps
-  try {
-    const payload = {
-      source_hospital_id,
-      destination_hospital_id,
-      resource_type,
-      resource_name: resource_name || resource_type,
-      quantity,
-      status: 'Pending' as TransferStatus,
-      remarks: remarks || null
-    };
-
-    const { data, error } = await supabase
-      .from('resource_transfers')
-      .insert([payload])
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('request_resource_transfer', {
+      p_destination_hospital_id: destination_hospital_id,
+      p_resource_type: resource_type,
+      p_resource_name: resource_name || resource_type,
+      p_quantity: quantity,
+      p_remarks: null,
+      p_idempotency_key: idempotency_key || crypto.randomUUID(),
+      p_resource_identity: resource_identity ?? null
+    });
 
     if (error || !data) {
       console.error('[Supabase Error] createTransferRequest failed:', error?.message);
@@ -95,21 +79,9 @@ export async function createTransferRequest(
       };
     }
 
-    const createdTransfer = data as ResourceTransferTable;
-
-    // 6. Send notification ONLY after DB operation succeeds
-    try {
-      const destUserIds = await getHospitalUserIds(destination_hospital_id);
-      const govtUserIds = await getGovernmentUserIds();
-      const receivers = Array.from(new Set([...destUserIds, ...govtUserIds, operator_id].filter(Boolean) as string[]));
-
-      if (receivers.length > 0) {
-        const title = `New Resource Transfer Requested (${resource_type})`;
-        const message = `A transfer of ${quantity} unit(s) of ${resource_name || resource_type} has been requested. Status: Pending.`;
-        await notifyUsers(receivers, title, message, 'Medium');
-      }
-    } catch (notifErr) {
-      console.warn('Notification send notice:', notifErr);
+    const createdTransfer = (Array.isArray(data) ? data[0] : data) as ResourceTransferTable | null;
+    if (!createdTransfer?.transfer_id || createdTransfer.status !== 'Pending') {
+      return { success: false, error: 'No verified pending transfer row was returned. Refresh and verify before continuing.' };
     }
 
     return { success: true, data: createdTransfer };
@@ -120,125 +92,60 @@ export async function createTransferRequest(
 }
 
 /**
- * Checks whether source hospital has enough inventory without violating protected minimum stock thresholds.
- */
-async function checkProtectedStockAvailability(
-  hospitalId: string,
-  resourceType: TransferResourceType,
-  _resourceName: string,
-  requestedQuantity: number
-): Promise<{ allowed: boolean; reason?: string }> {
-  if (resourceType === 'ICU Beds') {
-    const { data, error } = await supabase
-      .from('icu_inventory')
-      .select('available_icu_beds, total_icu_beds')
-      .eq('hospital_id', hospitalId)
-      .maybeSingle();
-
-    if (!error && data) {
-      const available = data.available_icu_beds || 0;
-      if (available < requestedQuantity) {
-        return {
-          allowed: false,
-          reason: `Transfer violates protected stock: Source hospital has only ${available} available ICU bed(s), but ${requestedQuantity} requested.`
-        };
-      }
-    }
-  } else if (resourceType === 'General Beds') {
-    const { data, error } = await supabase
-      .from('general_bed_inventory')
-      .select('available_beds, total_beds')
-      .eq('hospital_id', hospitalId)
-      .maybeSingle();
-
-    if (!error && data) {
-      const available = data.available_beds || 0;
-      if (available < requestedQuantity) {
-        return {
-          allowed: false,
-          reason: `Transfer violates protected stock: Source hospital has only ${available} available general bed(s), but ${requestedQuantity} requested.`
-        };
-      }
-    }
-  } else if (resourceType === 'Oxygen') {
-    const { data, error } = await supabase
-      .from('oxygen_inventory')
-      .select('available_capacity, minimum_threshold')
-      .eq('hospital_id', hospitalId)
-      .maybeSingle();
-
-    if (!error && data) {
-      const available = Number(data.available_capacity) || 0;
-      const minThreshold = Number(data.minimum_threshold) || 0;
-      const remainingAfterTransfer = available - requestedQuantity;
-
-      if (remainingAfterTransfer < minThreshold) {
-        return {
-          allowed: false,
-          reason: `Transfer violates protected stock limit: Remaining oxygen capacity (${remainingAfterTransfer}) would fall below minimum threshold (${minThreshold}).`
-        };
-      }
-    }
-  } else if (resourceType === 'Medicine') {
-    const { data, error } = await supabase
-      .from('medicine_inventory')
-      .select('current_stock, minimum_stock')
-      .eq('hospital_id', hospitalId)
-      .maybeSingle();
-
-    if (!error && data) {
-      const current = data.current_stock || 0;
-      const minStock = data.minimum_stock || 0;
-      const remaining = current - requestedQuantity;
-
-      if (remaining < minStock) {
-        return {
-          allowed: false,
-          reason: `Transfer violates protected stock: Remaining medicine stock (${remaining}) would fall below minimum safety threshold (${minStock}).`
-        };
-      }
-    }
-  }
-
-  return { allowed: true };
-}
-
-/**
  * Fetches resource transfers with optional hospital filtering and joined hospital names
  */
 export async function getResourceTransfers(hospitalId?: string): Promise<(ResourceTransferTable & {
-  source_hospital?: { hospital_name: string; district: string; hospital_code?: string };
-  destination_hospital?: { hospital_name: string; district: string; hospital_code?: string };
+  source_hospital?: { hospital_name: string; district: string; hospital_code?: string; latitude: number | null; longitude: number | null; address: string; phone: string | null };
+  destination_hospital?: { hospital_name: string; district: string; hospital_code?: string; latitude: number | null; longitude: number | null; address: string; phone: string | null };
 })[]> {
   try {
-    let query = supabase
-      .from('resource_transfers')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // Supabase caps individual reads; page the full history and use a stable tie-breaker
+    // so transfers created in the same timestamp are not skipped between pages.
+    const pageSize = 500;
+    const transfers: ResourceTransferTable[] = [];
+    for (let from = 0; ; from += pageSize) {
+      let query = supabase
+        .from('resource_transfers')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .order('transfer_id', { ascending: false })
+        .range(from, from + pageSize - 1);
 
-    if (hospitalId) {
-      query = query.or(`source_hospital_id.eq.${hospitalId},destination_hospital_id.eq.${hospitalId}`);
+      if (hospitalId) {
+        query = query.or(`source_hospital_id.eq.${hospitalId},destination_hospital_id.eq.${hospitalId}`);
+      }
+
+      const transfersRes = await query;
+      if (transfersRes.error) {
+        console.error('[Supabase Error] getResourceTransfers failed:', transfersRes.error.message);
+        throw new Error(`Failed to load resource transfers: ${transfersRes.error.message}`);
+      }
+      const page = (transfersRes.data as ResourceTransferTable[]) || [];
+      transfers.push(...page);
+      if (page.length < pageSize) break;
     }
 
-    const [transfersRes, hospitalsRes] = await Promise.all([
-      query,
-      supabase.from('hospitals').select('hospital_id, hospital_name, district, hospital_code')
-    ]);
-
-    if (transfersRes.error) {
-      console.error('[Supabase Error] getResourceTransfers failed:', transfersRes.error.message);
-      throw new Error(`Failed to load resource transfers: ${transfersRes.error.message}`);
+    const hospitalIds = [...new Set(transfers.flatMap((t) => [t.source_hospital_id, t.destination_hospital_id]).filter(Boolean))];
+    const hospitalsRes = hospitalIds.length
+      ? await supabase.from('hospitals').select('hospital_id, hospital_name, district, hospital_code, latitude, longitude, address, phone').in('hospital_id', hospitalIds)
+      : { data: [], error: null };
+    if (hospitalsRes.error) {
+      console.error('[Supabase Error] getResourceTransfers hospital directory failed:', hospitalsRes.error.message);
+      throw new Error(`Failed to load transfer facility details: ${hospitalsRes.error.message}`);
     }
 
-    const transfers = (transfersRes.data as ResourceTransferTable[]) || [];
     const hospitals = (hospitalsRes.data as any[]) || [];
     
-    const hospitalMap = new Map<string, { hospital_name: string; district: string; hospital_code?: string }>();
+    const hospitalMap = new Map<string, { hospital_name: string; district: string; hospital_code?: string; latitude: number | null; longitude: number | null; address: string; phone: string | null }>();
     hospitals.forEach((h) => {
       hospitalMap.set(h.hospital_id, {
         hospital_name: h.hospital_name,
         district: h.district,
-        hospital_code: h.hospital_code
+        hospital_code: h.hospital_code,
+        latitude: h.latitude,
+        longitude: h.longitude,
+        address: h.address,
+        phone: h.phone
       });
     });
 
@@ -246,11 +153,11 @@ export async function getResourceTransfers(hospitalId?: string): Promise<(Resour
       ...t,
       source_hospital: hospitalMap.get(t.source_hospital_id) || {
         hospital_name: `Facility (${t.source_hospital_id?.slice(0, 8) || 'Unknown'}...)`,
-        district: 'N/A'
+        district: 'N/A', latitude: null, longitude: null, address: '', phone: null
       },
       destination_hospital: hospitalMap.get(t.destination_hospital_id) || {
         hospital_name: `Facility (${t.destination_hospital_id?.slice(0, 8) || 'Unknown'}...)`,
-        district: 'N/A'
+        district: 'N/A', latitude: null, longitude: null, address: '', phone: null
       }
     }));
   } catch (err: any) {
@@ -267,97 +174,20 @@ export async function updateTransferStatus(
   transferId: string,
   newStatus: TransferStatus,
   operatorId: string,
-  remarks?: string
+  quantity?: number
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const now = new Date().toISOString();
-
-    // 1. Fetch current transfer row
-    const { data: currentTransfer, error: fetchErr } = await supabase
-      .from('resource_transfers')
-      .select('*')
-      .eq('transfer_id', transferId)
-      .single();
-
-    if (fetchErr || !currentTransfer) {
-      return { success: false, error: 'Transfer record not found in database.' };
-    }
-
-    const transfer = currentTransfer as ResourceTransferTable;
-
-    // 2. If status is Completed, execute PostgreSQL procedure or atomic completion logic
-    if (newStatus === 'Completed') {
-      const { data: _rpcResult, error: rpcErr } = await supabase.rpc('complete_resource_transfer', {
-        p_transfer_id: transferId,
-        p_operator_id: operatorId || null
-      });
-
-      if (rpcErr) {
-        console.warn('complete_resource_transfer RPC notice, applying direct update:', rpcErr.message);
-
-        const { error: updateErr } = await supabase
-          .from('resource_transfers')
-          .update({
-            status: 'Completed',
-            completed_at: now,
-            approved_by: operatorId || transfer.approved_by,
-            remarks: remarks || transfer.remarks,
-            updated_at: now
-          })
-          .eq('transfer_id', transferId);
-
-        if (updateErr) {
-          return { success: false, error: updateErr.message };
-        }
-
-        // Insert audit log row
-        await supabase.from('audit_logs').insert([{
-          user_id: operatorId || null,
-          action: 'RESOURCE_TRANSFER_COMPLETED',
-          table_name: 'resource_transfers',
-          record_id: transferId,
-          old_value: { status: transfer.status },
-          new_value: { status: 'Completed', resource_type: transfer.resource_type, quantity: transfer.quantity },
-          created_at: now
-        }]);
-      }
-    } else {
-      // Standard status update (Approved, In Transit, Rejected)
-      const updatePayload: any = {
-        status: newStatus,
-        updated_at: now
-      };
-
-      if (newStatus === 'Approved') {
-        updatePayload.approved_by = operatorId || null;
-      }
-      if (remarks) {
-        updatePayload.remarks = remarks;
-      }
-
-      const { error: updateErr } = await supabase
-        .from('resource_transfers')
-        .update(updatePayload)
-        .eq('transfer_id', transferId);
-
-      if (updateErr) {
-        return { success: false, error: updateErr.message };
-      }
-    }
-
-    // 3. Send notifications AFTER DB operation succeeds
-    try {
-      const sourceUsers = await getHospitalUserIds(transfer.source_hospital_id);
-      const destUsers = await getHospitalUserIds(transfer.destination_hospital_id);
-      const govtUsers = await getGovernmentUserIds();
-      const allReceivers = Array.from(new Set([...sourceUsers, ...destUsers, ...govtUsers, operatorId].filter(Boolean) as string[]));
-
-      const title = `Resource Transfer Updated: ${newStatus}`;
-      const message = `Transfer of ${transfer.quantity} unit(s) of ${transfer.resource_name || transfer.resource_type} status changed to ${newStatus}.`;
-
-      await notifyUsers(allReceivers, title, message, newStatus === 'Completed' ? 'High' : 'Medium');
-    } catch (notifErr) {
-      console.warn('Notification on status update warning:', notifErr);
+    void operatorId; // Kept for call-site compatibility; the RPC derives actor identity from auth.uid().
+    const { data, error } = await supabase.rpc('transition_resource_transfer', {
+      p_transfer_id: transferId,
+      p_new_status: newStatus,
+      p_quantity: quantity ?? null,
+      p_remarks: null
+    });
+    if (error || !data) return { success: false, error: error?.message || 'Transfer transition returned no row.' };
+    const transfer = (Array.isArray(data) ? data[0] : data) as ResourceTransferTable | null;
+    if (!transfer?.transfer_id || transfer.transfer_id !== transferId || transfer.status !== newStatus) {
+      return { success: false, error: 'No verified transfer row with the requested status was returned.' };
     }
 
     return { success: true };

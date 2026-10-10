@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { UserTable, UserRole } from '../types/database';
 import { User } from '@supabase/supabase-js';
+import { scheduleAuthProfileLookup } from '../services/authProfileScheduler';
+import { inactiveUserProfileMessage, isActiveUserProfile } from '../services/profileAuthority';
 import {
   loginWithSupabase,
   signUpWithSupabase,
@@ -39,62 +41,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profileUnconfigured, setProfileUnconfigured] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<AuthViewMode>('landing');
   const [authError, setAuthError] = useState<string | null>(null);
+  const profileRequestId = useRef(0);
 
   useEffect(() => {
-    // Check for active demo user override
+    let active = true;
+    let pendingProfileUserId: string | null = null;
+    let loadedProfileUserId: string | null = null;
+
     try {
-      const demoRaw = localStorage.getItem('lifelink_active_demo_user');
-      if (demoRaw) {
-        const demoUser = JSON.parse(demoRaw) as UserTable;
-        setUserProfile(demoUser);
-        setProfileUnconfigured(false);
-      }
+      localStorage.removeItem('lifelink_active_demo_user');
     } catch {}
 
-    const handleDemoRoleChange = (e: any) => {
-      if (e.detail) {
-        setUserProfile(e.detail);
+    // Keep this callback synchronous. Supabase documents a deadlock risk when
+    // async Supabase calls run inside onAuthStateChange; defer profile lookup
+    // until after the auth callback has returned.
+    const sub = onSupabaseAuthStateChange((_event, session) => {
+      const sessionUser = session?.user;
+      if (!sessionUser) {
+        profileRequestId.current += 1;
+        pendingProfileUserId = null;
+        loadedProfileUserId = null;
+        setUser(null);
+        setUserProfile(null);
         setProfileUnconfigured(false);
+        setLoading(false);
+        return;
       }
-    };
-    window.addEventListener('lifelink_demo_role_change', handleDemoRoleChange);
 
-    // Listen strictly to Supabase Auth State for Session Persistence
-    const sub = onSupabaseAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        const fetchedProfile = await fetchSupabaseUserProfile(session.user.id);
-        if (fetchedProfile) {
+      setUser(sessionUser);
+      if (loadedProfileUserId === sessionUser.id || pendingProfileUserId === sessionUser.id) return;
+
+      const requestId = ++profileRequestId.current;
+      pendingProfileUserId = sessionUser.id;
+      setUserProfile(null);
+      setProfileUnconfigured(false);
+      setLoading(true);
+
+      scheduleAuthProfileLookup(
+        sessionUser.id,
+        fetchSupabaseUserProfile,
+        (userId, fetchedProfile) => {
+          if (!active || userId !== sessionUser.id || requestId !== profileRequestId.current) return;
+          pendingProfileUserId = null;
+          if (!isActiveUserProfile(fetchedProfile)) {
+            loadedProfileUserId = null;
+            setUser(null);
+            setUserProfile(null);
+            setProfileUnconfigured(!fetchedProfile);
+            setAuthError(fetchedProfile
+              ? inactiveUserProfileMessage(fetchedProfile)
+              : 'Your account profile is not configured. Contact an administrator for access.');
+            setViewMode('login');
+            setLoading(false);
+            void logoutWithSupabase();
+            return;
+          }
+          loadedProfileUserId = sessionUser.id;
           setUserProfile(fetchedProfile);
           setProfileUnconfigured(false);
-        } else {
-          // If no custom profile in DB, check demo user
-          const demoRaw = localStorage.getItem('lifelink_active_demo_user');
-          if (demoRaw) {
-            setUserProfile(JSON.parse(demoRaw));
-            setProfileUnconfigured(false);
-          } else {
-            setUserProfile(null);
-            setProfileUnconfigured(true);
-          }
-        }
-      } else {
-        const demoRaw = localStorage.getItem('lifelink_active_demo_user');
-        if (demoRaw) {
-          setUserProfile(JSON.parse(demoRaw));
-          setProfileUnconfigured(false);
-        } else {
-          setUser(null);
-          setUserProfile(null);
-          setProfileUnconfigured(false);
-        }
-      }
-      setLoading(false);
+          setAuthError(null);
+          setViewMode('dashboard');
+          setLoading(false);
+        },
+        (task, delayMs) => window.setTimeout(task, delayMs)
+      );
     });
 
     return () => {
+      active = false;
+      profileRequestId.current += 1;
       sub.unsubscribe();
-      window.removeEventListener('lifelink_demo_role_change', handleDemoRoleChange);
     };
   }, []);
 
@@ -117,13 +133,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(supRes.user);
     const fetchedProfile = await fetchSupabaseUserProfile(supRes.user.id);
     
-    if (!fetchedProfile) {
-      setProfileUnconfigured(true);
-      const msg = 'Your account profile is not configured';
+    if (!isActiveUserProfile(fetchedProfile)) {
+      setProfileUnconfigured(!fetchedProfile);
+      const msg = fetchedProfile
+        ? inactiveUserProfileMessage(fetchedProfile)
+        : 'Your account profile is not configured';
       setAuthError(msg);
       await logoutWithSupabase();
       setUser(null);
       setUserProfile(null);
+      setViewMode('login');
       throw new Error(msg);
     }
 
@@ -145,14 +164,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error(msg);
     }
 
+    // Supabase returns a user without a session when email confirmation is
+    // enabled. Do not query RLS-protected profile data or treat that signup as
+    // a broken account; send the user to the existing confirmation/resend flow.
+    if (!supRes.session) {
+      const msg = 'Email not confirmed. If registration succeeded, check your inbox for a verification link before signing in.';
+      setUser(null);
+      setUserProfile(null);
+      setProfileUnconfigured(false);
+      setAuthError(msg);
+      setViewMode('login');
+      throw new Error(msg);
+    }
+
     setUser(supRes.user);
 
     // Fetch the inserted users table row
     const fetchedProfile = await fetchSupabaseUserProfile(supRes.user.id);
-    if (!fetchedProfile) {
-      setProfileUnconfigured(true);
-      const msg = 'Your account profile was created but is missing configuration details in public.users.';
+    if (!isActiveUserProfile(fetchedProfile)) {
+      setProfileUnconfigured(!fetchedProfile);
+      const msg = fetchedProfile
+        ? inactiveUserProfileMessage(fetchedProfile)
+        : 'Your account was created but its public.users profile is missing configuration details.';
       setAuthError(msg);
+      await logoutWithSupabase();
+      setUser(null);
+      setUserProfile(null);
+      setViewMode('login');
       throw new Error(msg);
     }
 

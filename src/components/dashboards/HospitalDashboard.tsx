@@ -24,7 +24,8 @@ import {
   addOxygenInventoryItem,
   updateOxygenInventoryItem,
   getMedicineInventory,
-  addMedicineItem
+  addMedicineItem,
+  updateMedicineItem
 } from '../../services/hospitalService';
 import {
   HospitalTable,
@@ -39,6 +40,7 @@ import { subscribeToSupabaseRealtime } from '../../services/supabaseDataLayer';
 import { LoadingState, ErrorState } from '../common/EmptyState';
 import { ResourceTransferManager } from '../ResourceTransferManager';
 import { OperationalPredictionManager } from '../OperationalPredictionManager';
+import { ResourceRiskAlertsPanel } from './ResourceRiskAlertsPanel';
 
 export const HospitalDashboard: React.FC = () => {
   const { userProfile } = useAuth();
@@ -57,12 +59,14 @@ export const HospitalDashboard: React.FC = () => {
   // ICU Bed Form State
   const [icuAvailInput, setIcuAvailInput] = useState(0);
   const [icuTotalInput, setIcuTotalInput] = useState(0);
+  const [minimumIcuBedsInput, setMinimumIcuBedsInput] = useState(0);
   const [savingIcu, setSavingIcu] = useState(false);
 
   // General Bed Form State
   const [genTotalInput, setGenTotalInput] = useState(0);
   const [genOccupiedInput, setGenOccupiedInput] = useState(0);
   const [genReservedInput, setGenReservedInput] = useState(0);
+  const [minimumGeneralBedsInput, setMinimumGeneralBedsInput] = useState(0);
   const [savingGen, setSavingGen] = useState(false);
 
   // Add Oxygen Form State
@@ -89,7 +93,12 @@ export const HospitalDashboard: React.FC = () => {
   const [medStock, setMedStock] = useState(100);
   const [medMinStock, setMedMinStock] = useState(20);
   const [medUnit, setMedUnit] = useState('Vials');
+  const [medManufacturer, setMedManufacturer] = useState('');
+  const [medExpiryDate, setMedExpiryDate] = useState('');
   const [addingMed, setAddingMed] = useState(false);
+  const [editingMedId, setEditingMedId] = useState<string | null>(null);
+  const [editMedicine, setEditMedicine] = useState<Pick<MedicineInventoryTable, 'medicine_name' | 'category' | 'dosage' | 'manufacturer' | 'current_stock' | 'minimum_stock' | 'unit' | 'expiry_date'> | null>(null);
+  const [savingMed, setSavingMed] = useState(false);
 
   const triggerToast = (msg: string) => {
     setActionSuccess(msg);
@@ -118,6 +127,7 @@ export const HospitalDashboard: React.FC = () => {
       if (icu) {
         setIcuAvailInput(icu.available_icu_beds);
         setIcuTotalInput(icu.total_icu_beds);
+        setMinimumIcuBedsInput(icu.minimum_icu_beds ?? 0);
       }
 
       setGenInv(gen);
@@ -125,6 +135,7 @@ export const HospitalDashboard: React.FC = () => {
         setGenTotalInput(gen.total_beds ?? 0);
         setGenOccupiedInput(gen.occupied_beds ?? 0);
         setGenReservedInput(gen.reserved_beds ?? 0);
+        setMinimumGeneralBedsInput(gen.minimum_beds ?? 0);
       }
 
       setOxygenList(oxy);
@@ -170,7 +181,12 @@ export const HospitalDashboard: React.FC = () => {
     if (!hospitalId) return;
     setSavingIcu(true);
     try {
-      await updateICUInventory(hospitalId, icuAvailInput, icuTotalInput);
+      const reservedIcuBeds = icuInv?.reserved_icu_beds ?? 0;
+      if (icuAvailInput + reservedIcuBeds > icuTotalInput) {
+        alert(`Available ICU beds (${icuAvailInput}) + Reserved ICU beds (${reservedIcuBeds}) cannot exceed Total ICU beds (${icuTotalInput}).`);
+        return;
+      }
+      await updateICUInventory(hospitalId, icuAvailInput, icuTotalInput, minimumIcuBedsInput, icuInv?.updated_at ?? null);
       triggerToast('ICU bed inventory updated in Supabase!');
       await fetchData();
     } catch (err: any) {
@@ -200,6 +216,10 @@ export const HospitalDashboard: React.FC = () => {
       alert(`Occupied beds (${genOccupiedInput}) + Reserved beds (${genReservedInput}) cannot exceed Total beds (${genTotalInput}).`);
       return;
     }
+    if (minimumGeneralBedsInput < 0 || minimumGeneralBedsInput > genTotalInput) {
+      alert('Minimum general-bed availability must be between zero and total beds.');
+      return;
+    }
 
     const calculatedAvailable = genTotalInput - genOccupiedInput - genReservedInput;
 
@@ -210,7 +230,9 @@ export const HospitalDashboard: React.FC = () => {
         total_beds: genTotalInput,
         occupied_beds: genOccupiedInput,
         reserved_beds: genReservedInput,
-        available_beds: calculatedAvailable
+        available_beds: calculatedAvailable,
+        minimum_beds: minimumGeneralBedsInput,
+        expected_updated_at: genInv?.updated_at ?? null
       });
 
       if (!savedRow || !savedRow.bed_inventory_id) {
@@ -345,15 +367,50 @@ export const HospitalDashboard: React.FC = () => {
         dosage: medDosage,
         current_stock: medStock,
         minimum_stock: medMinStock,
-        unit: medUnit
+        unit: medUnit,
+        manufacturer: medManufacturer,
+        expiry_date: medExpiryDate || null
       });
       triggerToast(`Added ${medName} to medicine inventory!`);
       setMedName('');
+      setMedManufacturer('');
+      setMedExpiryDate('');
       await fetchData();
     } catch (err: any) {
       alert('Failed to add medicine: ' + err.message);
     } finally {
       setAddingMed(false);
+    }
+  };
+
+  const beginEditMedicine = (medicine: MedicineInventoryTable) => {
+    setEditingMedId(medicine.medicine_inventory_id);
+    setEditMedicine({
+      medicine_name: medicine.medicine_name,
+      category: medicine.category,
+      dosage: medicine.dosage,
+      manufacturer: medicine.manufacturer,
+      current_stock: medicine.current_stock,
+      minimum_stock: medicine.minimum_stock,
+      unit: medicine.unit,
+      expiry_date: medicine.expiry_date
+    });
+  };
+
+  const handleSaveMedicine = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMedId || !editMedicine) return;
+    setSavingMed(true);
+    try {
+      await updateMedicineItem(editingMedId, editMedicine);
+      triggerToast('Medicine inventory record updated.');
+      setEditingMedId(null);
+      setEditMedicine(null);
+      await fetchData();
+    } catch (err: any) {
+      alert('Failed to update medicine inventory: ' + (err?.message || 'Database error'));
+    } finally {
+      setSavingMed(false);
     }
   };
 
@@ -396,6 +453,8 @@ export const HospitalDashboard: React.FC = () => {
         <ErrorState message={error} onRetry={fetchData} />
       ) : (
         <div className="space-y-8">
+          <ResourceRiskAlertsPanel />
+
           {/* Hospital Emergency Queue Notice (Batch 1 Safety Boundary) */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-3">
             <div className="flex items-center gap-2.5 text-amber-400">
@@ -420,8 +479,8 @@ export const HospitalDashboard: React.FC = () => {
           {/* Operational Demand Forecasts & Stockout Predictions (Strictly for this hospital) */}
           <OperationalPredictionManager
             filterHospitalId={hospitalId}
-            title="Facility Demand Predictions & Stockout Risk"
-            subtitle="Deterministic baseline forecasts calculated directly from live Supabase inventory and patient request logs for your facility."
+            title="Illustrative Bed Request Rates"
+            subtitle="Illustrative bed-rate estimates from clinician-confirmed synthetic scenarios assigned to your facility within the past 30 days. They are not trained or validated forecasts."
           />
 
           {/* Bed Inventory Forms Grid */}
@@ -460,8 +519,16 @@ export const HospitalDashboard: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300">Minimum available ICU beds for warning</label>
+                  <input type="number" min="0" max={icuTotalInput} required value={minimumIcuBedsInput}
+                    onChange={(e) => setMinimumIcuBedsInput(parseInt(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white font-mono" />
+                </div>
+
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-400 font-mono">
-                  Occupied Beds: {Math.max(0, icuTotalInput - icuAvailInput)} / {icuTotalInput}
+                  Occupied Beds: {Math.max(0, icuTotalInput - icuAvailInput - (icuInv?.reserved_icu_beds ?? 0))} / {icuTotalInput}
+                  {' · '}Reserved: {icuInv?.reserved_icu_beds ?? 0}
                 </div>
 
                 <button
@@ -482,7 +549,7 @@ export const HospitalDashboard: React.FC = () => {
               </h2>
 
               <form onSubmit={handleSaveGen} className="space-y-4">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-300">Total Beds</label>
                     <input
@@ -508,15 +575,21 @@ export const HospitalDashboard: React.FC = () => {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300">Reserved</label>
+                    <label className="text-xs font-bold text-slate-300">Reserved (transfer holds)</label>
                     <input
                       type="number"
                       min="0"
-                      required
                       value={genReservedInput}
-                      onChange={(e) => setGenReservedInput(parseInt(e.target.value) || 0)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white font-mono"
+                      readOnly
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-400 font-mono cursor-not-allowed"
                     />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-300">Minimum available for warning</label>
+                    <input type="number" min="0" max={genTotalInput} required value={minimumGeneralBedsInput}
+                      onChange={(e) => setMinimumGeneralBedsInput(parseInt(e.target.value) || 0)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white font-mono" />
                   </div>
                 </div>
 
@@ -822,6 +895,17 @@ export const HospitalDashboard: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-300">Manufacturer (optional)</label>
+                    <input type="text" maxLength={120} value={medManufacturer} onChange={(e) => setMedManufacturer(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-300">Expiry date (optional)</label>
+                    <input type="date" value={medExpiryDate} onChange={(e) => setMedExpiryDate(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white" />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-300">Stock</label>
@@ -880,15 +964,35 @@ export const HospitalDashboard: React.FC = () => {
                 <p className="text-xs text-slate-400 italic">No medicine items logged for this hospital.</p>
               ) : (
                 <div className="space-y-3">
-                  {medicines.map((m) => (
-                    <div key={m.medicine_inventory_id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex justify-between items-center text-xs">
+                  {medicines.map((m) => editingMedId === m.medicine_inventory_id && editMedicine ? (
+                    <form key={m.medicine_inventory_id} onSubmit={handleSaveMedicine} className="p-3 bg-slate-950 border border-emerald-800 rounded-xl space-y-2 text-xs">
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="text-slate-400">Medicine<input required maxLength={120} value={editMedicine.medicine_name} onChange={(e) => setEditMedicine({ ...editMedicine, medicine_name: e.target.value })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" /></label>
+                        <label className="text-slate-400">Category<select value={editMedicine.category} onChange={(e) => setEditMedicine({ ...editMedicine, category: e.target.value as MedicineCategory })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">{['Emergency','Antibiotic','Analgesic','Antipyretic','Injection','IV Fluid','Vaccine','Other'].map(category => <option key={category}>{category}</option>)}</select></label>
+                        <label className="text-slate-400">Dosage<input required maxLength={120} value={editMedicine.dosage} onChange={(e) => setEditMedicine({ ...editMedicine, dosage: e.target.value })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" /></label>
+                        <label className="text-slate-400">Manufacturer<input maxLength={120} value={editMedicine.manufacturer || ''} onChange={(e) => setEditMedicine({ ...editMedicine, manufacturer: e.target.value || null })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" /></label>
+                        <label className="text-slate-400">Available stock (excludes held transfers)<input required type="number" min="0" step="1" value={editMedicine.current_stock} onChange={(e) => setEditMedicine({ ...editMedicine, current_stock: Number(e.target.value) })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" /></label>
+                        <label className="text-slate-400">Protected minimum<input required type="number" min="0" step="1" value={editMedicine.minimum_stock} onChange={(e) => setEditMedicine({ ...editMedicine, minimum_stock: Number(e.target.value) })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" /></label>
+                        <label className="text-slate-400">Unit<input required maxLength={40} value={editMedicine.unit} onChange={(e) => setEditMedicine({ ...editMedicine, unit: e.target.value })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" /></label>
+                        <label className="text-slate-400">Expiry date<input type="date" value={editMedicine.expiry_date || ''} onChange={(e) => setEditMedicine({ ...editMedicine, expiry_date: e.target.value || null })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" /></label>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button type="button" disabled={savingMed} onClick={() => { setEditingMedId(null); setEditMedicine(null); }} className="rounded-lg border border-slate-700 px-3 py-2 text-slate-300 disabled:opacity-50">Cancel</button>
+                        <button type="submit" disabled={savingMed} className="rounded-lg bg-emerald-700 px-3 py-2 font-bold text-white disabled:opacity-50">{savingMed ? 'Saving…' : 'Save record'}</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div key={m.medicine_inventory_id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex justify-between items-center gap-3 text-xs">
                       <div>
                         <p className="font-extrabold text-white text-sm">{m.medicine_name}</p>
-                        <p className="text-[11px] text-slate-400">Category: {m.category} | Dosage: {m.dosage}</p>
+                        <p className="text-[11px] text-slate-400">{m.category} · {m.dosage} · {m.manufacturer || 'Manufacturer not recorded'} · Expires {m.expiry_date || 'not recorded'}</p>
+                        <p className="text-[10px] text-slate-500">Protected minimum: {m.minimum_stock} {m.unit} · Held for approved transfers: {m.reserved_stock || 0} {m.unit}</p>
                       </div>
-                      <div className="text-right font-mono">
-                        <p className="text-emerald-400 font-bold text-sm">{m.current_stock} {m.unit}</p>
-                        <p className="text-[10px] text-slate-500">Min: {m.minimum_stock} {m.unit}</p>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right font-mono">
+                          <p className="text-emerald-400 font-bold text-sm">{m.current_stock} {m.unit} available</p>
+                        </div>
+                        <button type="button" onClick={() => beginEditMedicine(m)} className="rounded-lg border border-slate-700 p-2 text-slate-300 hover:border-emerald-700 hover:text-white" aria-label={`Edit ${m.medicine_name} inventory`}><Edit2 className="h-4 w-4" /></button>
                       </div>
                     </div>
                   ))}

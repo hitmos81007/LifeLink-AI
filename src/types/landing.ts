@@ -1,4 +1,4 @@
-export type NavSection = 'home' | 'features' | 'about' | 'contact' | 'login';
+export type NavSection = 'home' | 'resources' | 'features' | 'about' | 'contact' | 'login';
 
 export interface FeatureItem {
   id: string;

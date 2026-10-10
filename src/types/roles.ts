@@ -9,6 +9,7 @@ export type AppRole =
   | 'blood_bank_admin'
   | 'ambulance_admin'
   | 'government_admin'
+  | 'platform_admin'
   | 'clinician_reviewer'
   | 'hospital_approver';
 
@@ -24,7 +25,9 @@ export type AppCapability =
   | 'confirm_clinical_urgency'
   | 'review_hospital_approval'
   | 'approve_hospital_action'
-  | 'manage_system_configuration';
+  | 'manage_system_configuration'
+  | 'review_provider_account'
+  | 'manage_demo_account_roles';
 
 /**
  * Normalizes legacy, raw, or alternate casing role strings into strict AppRole.
@@ -63,6 +66,9 @@ export function normalizeAppRole(rawRole: string | null | undefined): AppRole | 
     case 'government':
       return 'government_admin';
 
+    case 'platform_admin':
+      return 'platform_admin';
+
     case 'clinician_reviewer':
     case 'clinician':
     case 'medical_reviewer':
@@ -88,6 +94,7 @@ export const ROLE_DISPLAY_LABELS: Record<AppRole, string> = {
   blood_bank_admin: 'Blood Bank Provider',
   ambulance_admin: 'Ambulance Provider',
   government_admin: 'District Coordinator',
+  platform_admin: 'Platform Administrator',
   clinician_reviewer: 'Clinician Reviewer',
   hospital_approver: 'Hospital Approver'
 };
@@ -116,7 +123,8 @@ export const ROLE_CAPABILITIES: Record<AppRole, readonly AppCapability[]> = {
   hospital_admin: ['manage_hospital_inventory'],
   blood_bank_admin: ['manage_blood_inventory'],
   ambulance_admin: ['manage_ambulance_fleet'],
-  government_admin: ['view_district_dashboard', 'manage_system_configuration'],
+  government_admin: ['view_district_dashboard'],
+  platform_admin: ['manage_system_configuration', 'review_provider_account', 'manage_demo_account_roles'],
   clinician_reviewer: ['review_clinical_case', 'confirm_clinical_urgency'],
   hospital_approver: ['review_hospital_approval', 'approve_hospital_action']
 };
@@ -150,7 +158,7 @@ export const PUBLIC_ROLE_OPTIONS: RoleOption[] = [
   {
     role: 'patient',
     label: 'Patient',
-    description: 'Emergency SOS, Hospital Bed Finder, Blood Orders & Triage Tracking',
+    description: 'Synthetic emergency scenarios, facility recommendations, and clinician-review status',
     icon: 'HeartPulse',
     bg: 'bg-rose-50 border-rose-200 text-rose-900',
     text: 'text-rose-600'
@@ -158,7 +166,7 @@ export const PUBLIC_ROLE_OPTIONS: RoleOption[] = [
   {
     role: 'hospital_admin',
     label: 'Hospital Staff',
-    description: 'ICU & Bed Capacity Telemetry, ER Operations, Oxygen & Medicine Inventory',
+    description: 'Hospital bed and inventory records for authorized staff',
     icon: 'Building2',
     bg: 'bg-blue-50 border-blue-200 text-blue-900',
     text: 'text-blue-600'
@@ -166,7 +174,7 @@ export const PUBLIC_ROLE_OPTIONS: RoleOption[] = [
   {
     role: 'blood_bank_admin',
     label: 'Blood Bank Provider',
-    description: 'Live Blood Group Inventory Matrix (A±, B±, AB±, O±) & Restock Management',
+    description: 'Synthetic blood inventory records and authorized stock updates',
     icon: 'Droplets',
     bg: 'bg-red-50 border-red-200 text-red-900',
     text: 'text-red-600'
@@ -174,19 +182,11 @@ export const PUBLIC_ROLE_OPTIONS: RoleOption[] = [
   {
     role: 'ambulance_admin',
     label: 'Ambulance Provider',
-    description: 'Fleet Management, Vehicle Status Updates & Dispatch Readiness',
+    description: 'Fleet records and status management for authorized provider accounts',
     icon: 'Ambulance',
     bg: 'bg-amber-50 border-amber-200 text-amber-900',
     text: 'text-amber-600'
   },
-  {
-    role: 'government_admin',
-    label: 'District Coordinator',
-    description: 'District Healthcare Analytics, Inter-Facility Capacity Map & Audit Logs',
-    icon: 'ShieldCheck',
-    bg: 'bg-emerald-50 border-emerald-200 text-emerald-900',
-    text: 'text-emerald-600'
-  }
 ];
 
 export const normalizeRole = normalizeAppRole;

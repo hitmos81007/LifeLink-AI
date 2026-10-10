@@ -3,12 +3,12 @@ import { Activity, Menu, X, ChevronRight, LogIn, Sparkles } from 'lucide-react';
 import { NavSection } from '../types/landing';
 import { ThemeToggle } from './ui/ThemeToggle';
 
-import { QuickDemoRoleSwitcher } from './common/QuickDemoRoleSwitcher';
 
 interface NavbarProps {
   activeSection: NavSection;
   onNavigate: (section: NavSection) => void;
   onOpenLogin: () => void;
+  onOpenPatientPortal: () => void;
   onOpenGetStarted: () => void;
   onOpenMciReport?: () => void;
 }
@@ -17,6 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeSection,
   onNavigate,
   onOpenLogin,
+  onOpenPatientPortal,
   onOpenGetStarted,
   onOpenMciReport,
 }) => {
@@ -37,6 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const navItems: { id: NavSection; label: string }[] = [
     { id: 'home', label: 'Home' },
+    { id: 'resources', label: 'Find Resources' },
     { id: 'features', label: 'Features' },
     { id: 'about', label: 'About' },
     { id: 'contact', label: 'Contact' },
@@ -128,9 +130,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Action Buttons */}
           <div className="hidden md:flex items-center space-x-2.5">
-            {/* Quick 1-Click Role Switcher */}
-            <QuickDemoRoleSwitcher />
-
             <ThemeToggle />
 
             {onOpenMciReport && (
@@ -138,13 +137,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={onOpenMciReport}
                 className="px-3 py-1.5 text-xs font-black text-white bg-red-600 hover:bg-red-500 rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1 active:scale-95"
               >
-                <span>🚨 Guest MCI</span>
+                <span>Try MCI simulation</span>
               </button>
             )}
 
             <button
               id="header-get-started-btn"
-              onClick={onOpenGetStarted}
+              onClick={onOpenPatientPortal}
               className="px-3.5 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-98"
             >
               <Sparkles className="w-3.5 h-3.5 text-blue-200" />

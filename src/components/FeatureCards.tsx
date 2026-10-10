@@ -8,11 +8,11 @@ import {
   BarChart3,
   ChevronRight,
   Sparkles,
-  CheckCircle2,
   X,
   ArrowRight,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  Info
 } from 'lucide-react';
 import { FEATURE_CARDS_DATA } from '../data/featureData';
 import { FeatureItem } from '../types/landing';
@@ -123,14 +123,14 @@ export const FeatureCards: React.FC<FeatureCardsProps> = () => {
           <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
             <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
             <span className="text-xs font-bold uppercase tracking-wider mono">
-              Below Hero • Core AI Intelligence Modules
+              Prototype scope by resource area
             </span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Comprehensive Emergency Resource Modules
+            Prototype Workflows and Planned Features
           </h2>
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
-            Six interconnected AI engines built to unify emergency medical operations across municipal healthcare networks.
+              The cards below describe the product direction. Some workflows are prototypes or simulations and are not live hospital services.
           </p>
         </div>
 
@@ -169,13 +169,8 @@ export const FeatureCards: React.FC<FeatureCardsProps> = () => {
 
                 {/* Metrics Highlights & CTA */}
                 <div>
-                  <div className="grid grid-cols-3 gap-2 py-3 border-y border-slate-100 dark:border-slate-800 my-4 text-center">
-                    {feature.metrics.map((m, idx) => (
-                      <div key={idx}>
-                        <p className={`text-xs font-bold mono ${style.textAccent}`}>{m.value}</p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{m.label}</p>
-                      </div>
-                    ))}
+                  <div className="py-3 border-y border-slate-100 dark:border-slate-800 my-4 text-center">
+                    <span className={`px-2.5 py-1 text-[10px] mono font-bold rounded border ${style.badgeBg} dark:bg-slate-800 dark:border-slate-700`}>Prototype scope • not a live service</span>
                   </div>
 
                   <button className="w-full py-2 text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-700 dark:group-hover:text-blue-400 bg-slate-50 dark:bg-slate-800 group-hover:bg-blue-50 dark:group-hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer">
@@ -221,7 +216,7 @@ export const FeatureCards: React.FC<FeatureCardsProps> = () => {
             {/* Full Description */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mono">
-                Platform Intelligence Overview
+                Intended Product Direction
               </h4>
               <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                 {selectedFeature.fullDescription}
@@ -231,12 +226,12 @@ export const FeatureCards: React.FC<FeatureCardsProps> = () => {
             {/* Capabilities List */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mono">
-                Key System Capabilities
+                Prototype functionality and boundaries
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {selectedFeature.keyCapabilities.map((cap, idx) => (
                   <div key={idx} className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                    <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                     <span>{cap}</span>
                   </div>
                 ))}
@@ -247,7 +242,7 @@ export const FeatureCards: React.FC<FeatureCardsProps> = () => {
             <div className="bg-slate-900 dark:bg-slate-950 text-white rounded-xl p-4 space-y-2 shadow-inner border border-slate-800">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <span className="text-[10px] mono font-bold text-slate-400">
-                  REAL-TIME SIMULATION FEED
+                  ILLUSTRATIVE SCENARIO • SYNTHETIC DATA
                 </span>
                 <span className="text-[10px] mono text-emerald-400 font-bold flex items-center gap-1">
                   <Clock className="w-3 h-3 text-amber-400" />
@@ -268,7 +263,7 @@ export const FeatureCards: React.FC<FeatureCardsProps> = () => {
             <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
               <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                Integrated via FastAPI Gateway
+                Supabase-backed prototype • No live hospital integration
               </span>
               <button
                 onClick={() => setSelectedFeature(null)}

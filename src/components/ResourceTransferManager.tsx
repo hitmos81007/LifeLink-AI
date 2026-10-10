@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   ArrowRightLeft,
@@ -20,8 +20,9 @@ import {
   getResourceTransfers,
   updateTransferStatus
 } from '../services/resourceTransferService';
-import { getActiveHospitals, HospitalDirectoryItem } from '../services/hospitalService';
+import { getActiveHospitals, getGeneralBedInventory, getICUInventory, getMedicineInventory, getOxygenInventory, HospitalDirectoryItem } from '../services/hospitalService';
 import { ResourceTransferTable, TransferResourceType, TransferStatus } from '../types/database';
+import { buildMedicineTransferOptions, buildOxygenTransferOptions, TransferStockOption } from '../services/resourceTransferCompatibility';
 import { subscribeToSupabaseRealtime } from '../services/supabaseDataLayer';
 import { LoadingState, ErrorState } from './common/EmptyState';
 
@@ -51,9 +52,13 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
 
   const [destHospitalId, setDestHospitalId] = useState<string>('');
   const [resourceType, setResourceType] = useState<TransferResourceType>('ICU Beds');
-  const [resourceName, setResourceName] = useState<string>('ICU Beds Transfer');
+  const [resourceName, setResourceName] = useState<string>('ICU Beds');
+  const [stockOptions, setStockOptions] = useState<TransferStockOption[]>([]);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
-  const [remarks, setRemarks] = useState<string>('');
+  const [transitioningTransferId, setTransitioningTransferId] = useState<string | null>(null);
+  const transferAttemptRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
 
   const triggerToast = (msg: string) => {
     setActionSuccess(msg);
@@ -102,12 +107,52 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
 
   const handleResourceTypeChange = (type: TransferResourceType) => {
     setResourceType(type);
-    if (type === 'ICU Beds') setResourceName('ICU Beds Allocation');
-    else if (type === 'General Beds') setResourceName('General Emergency Beds');
-    else if (type === 'Oxygen') setResourceName('Oxygen Cylinders (40L)');
-    else if (type === 'Medicine') setResourceName('Essential Emergency Antibiotics');
-    else if (type === 'Blood') setResourceName('PRBC Blood Units');
+    if (type === 'ICU Beds') setResourceName('ICU Beds');
+    else if (type === 'General Beds') setResourceName('General Beds');
+    else setResourceName('');
   };
+
+  useEffect(() => {
+    if (!showCreateModal || !userHospitalId) return;
+    let cancelled = false;
+    setStockLoading(true);
+    setStockError(null);
+    const loadStock = async () => {
+      try {
+        if (!destHospitalId) {
+          if (!cancelled) setStockOptions([]);
+          return;
+        }
+        let options: TransferStockOption[] = [];
+        if (resourceType === 'ICU Beds') {
+          const [source, destination] = await Promise.all([getICUInventory(userHospitalId), getICUInventory(destHospitalId)]);
+          if (source && destination) options = [{ key: 'ICU Beds', label: 'ICU Beds', resourceName: 'ICU Beds', transferable: source.available_icu_beds, unit: 'beds' }];
+        } else if (resourceType === 'General Beds') {
+          const [source, destination] = await Promise.all([getGeneralBedInventory(userHospitalId), getGeneralBedInventory(destHospitalId)]);
+          if (source && destination) options = [{ key: 'General Beds', label: 'General Beds', resourceName: 'General Beds', transferable: source.available_beds, unit: 'beds' }];
+        } else if (resourceType === 'Oxygen') {
+          const [sourceRows, destinationRows] = await Promise.all([getOxygenInventory(userHospitalId), getOxygenInventory(destHospitalId)]);
+          options = buildOxygenTransferOptions(sourceRows, destinationRows);
+        } else {
+          const [sourceRows, destinationRows] = await Promise.all([getMedicineInventory(userHospitalId), getMedicineInventory(destHospitalId)]);
+          options = buildMedicineTransferOptions(sourceRows, destinationRows);
+        }
+        if (!cancelled) {
+          const available = options.filter((option) => option.transferable > 0);
+          setStockOptions(available);
+          setResourceName((current) => available.some((option) => option.key === current) ? current : (available[0]?.key || ''));
+        }
+      } catch (err: any) {
+        if (!cancelled) setStockError(err?.message || 'Could not load source inventory.');
+      } finally {
+        if (!cancelled) setStockLoading(false);
+      }
+    };
+    void loadStock();
+    return () => { cancelled = true; };
+  }, [showCreateModal, userHospitalId, destHospitalId, resourceType]);
+
+  const selectedStock = stockOptions.find((option) => option.key === resourceName);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,23 +183,34 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
       setFormError('Quantity must be greater than zero.');
       return;
     }
+    if (!selectedStock || quantity > selectedStock.transferable) {
+      setFormError('Choose a listed resource and a quantity within transferable stock above the protected minimum.');
+      return;
+    }
 
     setSubmitting(true);
     try {
+      const fingerprint = JSON.stringify([
+        sourceId, destHospitalId, resourceType, selectedStock?.key, quantity
+      ]);
+      if (!transferAttemptRef.current || transferAttemptRef.current.fingerprint !== fingerprint) {
+        transferAttemptRef.current = { fingerprint, idempotencyKey: crypto.randomUUID() };
+      }
       const result = await createTransferRequest({
         source_hospital_id: sourceId,
         destination_hospital_id: destHospitalId,
         resource_type: resourceType,
-        resource_name: resourceName,
+        resource_name: selectedStock.resourceName,
+        resource_identity: selectedStock.identity,
         quantity: Number(quantity),
-        remarks,
-        operator_id: userProfile?.user_id
+        operator_id: userProfile?.user_id,
+        idempotency_key: transferAttemptRef.current.idempotencyKey
       });
 
       if (result.success && result.data) {
+        transferAttemptRef.current = null;
         triggerToast(`Resource transfer request #${result.data.transfer_id.slice(0, 8)} created successfully!`);
         setShowCreateModal(false);
-        setRemarks('');
         setQuantity(1);
         await fetchInitialData();
       } else {
@@ -168,8 +224,10 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
   };
 
   const handleStatusChange = async (transferId: string, newStatus: TransferStatus) => {
+    if (transitioningTransferId) return;
+    setTransitioningTransferId(transferId);
     try {
-      const operatorId = userProfile?.user_id || 'system_operator';
+      const operatorId = userProfile?.user_id || '';
       const res = await updateTransferStatus(transferId, newStatus, operatorId);
 
       if (res.success) {
@@ -180,6 +238,8 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
       }
     } catch (err: any) {
       setError('Error updating transfer status: ' + err.message);
+    } finally {
+      setTransitioningTransferId(null);
     }
   };
 
@@ -209,6 +269,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
         </div>
       )}
 
+
       {/* Section Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
@@ -237,7 +298,8 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
               setFormError(null);
               setShowCreateModal(true);
             }}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-950/50 flex items-center gap-2 transition-all cursor-pointer border border-blue-500"
+            disabled={isGovtAdmin || userProfile?.role !== 'hospital_admin' || !userHospitalId}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-950/50 flex items-center gap-2 transition-all cursor-pointer border border-blue-500"
           >
             <PlusCircle className="w-4 h-4" />
             <span>Request Transfer</span>
@@ -268,6 +330,9 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                 <span>{formError}</span>
               </div>
             )}
+            <div className="bg-amber-950/50 border border-amber-800/70 text-amber-200 p-3 rounded-xl text-[11px] leading-relaxed">
+              Synthetic demonstration only. These actions update prototype inventory records; no shipment, transport, or dispatch is arranged.
+            </div>
 
             <form onSubmit={handleCreateSubmit} className="space-y-4 text-xs">
               {/* Destination Hospital */}
@@ -308,22 +373,19 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                     <option value="General Beds">General Beds</option>
                     <option value="Oxygen">Oxygen</option>
                     <option value="Medicine">Medicine</option>
-                    <option value="Blood">Blood</option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-bold block">Resource Description</label>
-                  <input
-                    type="text"
-                    value={resourceName}
-                    onChange={(e) => setResourceName(e.target.value)}
-                    placeholder="e.g. Oxygen Cylinders"
-                    className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none"
-                    required
-                  />
+                  <label className="text-slate-300 font-bold block">Recorded source inventory</label>
+                  <select value={resourceName} onChange={(e) => setResourceName(e.target.value)} disabled={stockLoading || stockOptions.length === 0}
+                    className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none" required>
+                    {stockOptions.length === 0 && <option value="">No transferable stock</option>}
+                    {stockOptions.map((option) => <option key={option.key} value={option.key}>{option.label} · {option.transferable} {option.unit} transferable</option>)}
+                  </select>
                 </div>
               </div>
+              {stockLoading ? <p className="text-[10px] text-slate-400">Loading source inventory…</p> : stockError ? <p className="text-[10px] text-rose-300">{stockError}</p> : selectedStock ? <p className="text-[10px] text-amber-300">Up to {selectedStock.transferable} {selectedStock.unit} available above the protected minimum. This is a synthetic prototype record.</p> : <p className="text-[10px] text-amber-300">No unique inventory item has stock available above its protected minimum.</p>}
 
               {/* Quantity */}
               <div className="space-y-1">
@@ -331,22 +393,11 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                 <input
                   type="number"
                   min="1"
+                  max={selectedStock?.transferable || undefined}
                   value={quantity}
                   onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none font-mono"
                   required
-                />
-              </div>
-
-              {/* Remarks */}
-              <div className="space-y-1">
-                <label className="text-slate-300 font-bold block">Remarks / Medical Urgency Justification</label>
-                <textarea
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="e.g. Emergency surge in respiratory ward. Requesting immediate dispatch."
-                  rows={3}
-                  className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none resize-none"
                 />
               </div>
 
@@ -361,7 +412,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || hospitals.length === 0}
+                  disabled={submitting || hospitals.length === 0 || stockLoading || !selectedStock || quantity > (selectedStock?.transferable || 0)}
                   className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-blue-950/50"
                 >
                   {submitting ? (
@@ -425,7 +476,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                       <span className="text-[10px] text-slate-500">{t.resource_type}</span>
                     </td>
                     <td className="py-3 px-3 font-bold text-sky-400">
-                      {t.quantity}
+                      {t.approved_quantity ?? t.quantity}
                     </td>
                     <td className="py-3 px-3 font-sans">
                       <span className="font-bold text-slate-200 block">
@@ -457,11 +508,24 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                           <span className="text-emerald-400 text-[10px] font-bold flex items-center gap-1 justify-end">
                             <CheckCircle2 className="w-3 h-3" /> Completed
                           </span>
-                        ) : (
-                          <span className="text-slate-400 text-[10px] italic">
-                            Approval execution will become available after the trusted transfer workflow is configured.
-                          </span>
-                        )}
+                        ) : userProfile?.role === 'hospital_approver' && isSource && t.status === 'Pending' ? (
+                          <>
+                            <button
+                              onClick={() => handleStatusChange(t.transfer_id, 'Approved')}
+                              disabled={transitioningTransferId !== null}
+                              className="text-emerald-300 hover:text-emerald-200 disabled:opacity-50 font-bold inline-flex items-center gap-1"
+                            ><CheckCircle2 className="w-3 h-3" />Approve</button>
+                            <button
+                              onClick={() => handleStatusChange(t.transfer_id, 'Rejected')}
+                              disabled={transitioningTransferId !== null}
+                              className="text-rose-300 hover:text-rose-200 disabled:opacity-50 font-bold inline-flex items-center gap-1"
+                            ><XCircle className="w-3 h-3" />Reject</button>
+                          </>
+                        ) : userProfile?.role === 'hospital_admin' && isSource && t.status === 'Approved' ? (
+                          <button onClick={() => handleStatusChange(t.transfer_id, 'In Transit')} className="text-amber-300 hover:text-amber-200 font-bold inline-flex items-center gap-1"><Truck className="w-3 h-3"/>Record simulated handoff</button>
+                        ) : userProfile?.role === 'hospital_admin' && isDest && t.status === 'In Transit' ? (
+                          <button onClick={() => handleStatusChange(t.transfer_id, 'Completed')} className="text-emerald-300 hover:text-emerald-200 font-bold inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/>Record simulated receipt</button>
+                        ) : <span className="text-slate-500 text-[10px]">Awaiting authorized action</span>}
                       </div>
                     </td>
                   </tr>

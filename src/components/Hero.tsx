@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Sparkles,
   ArrowRight,
-  ShieldCheck,
   Activity,
   Bed,
   Droplet,
@@ -13,14 +12,14 @@ import {
 } from 'lucide-react';
 
 interface HeroProps {
-  onOpenGetStarted: () => void;
+  onExploreResources: () => void;
   onOpenLearnMore: () => void;
   onExploreFeatures: () => void;
   onOpenMciReport?: () => void;
 }
 
 export const Hero: React.FC<HeroProps> = ({
-  onOpenGetStarted,
+  onExploreResources,
   onOpenLearnMore,
   onExploreFeatures,
   onOpenMciReport,
@@ -36,17 +35,16 @@ export const Hero: React.FC<HeroProps> = ({
           {/* Left Hero Content */}
           <div className="lg:col-span-7 space-y-6 text-left">
             
-            {/* Live Operational Badge & Fast MCI Button */}
+            {/* Prototype status and simulation entry */}
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center space-x-2 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-blue-200 dark:border-blue-800 shadow-xs">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  LifeLink AI Infrastructure v2.4
+                  LifeLink AI Prototype
                 </span>
                 <span className="text-slate-300 dark:text-slate-600">•</span>
                 <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  HIPAA & FHIR Certified
+                  Synthetic demonstration data
                 </span>
               </div>
 
@@ -55,7 +53,7 @@ export const Hero: React.FC<HeroProps> = ({
                   onClick={onOpenMciReport}
                   className="inline-flex items-center space-x-1.5 bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider shadow-md shadow-red-600/30 cursor-pointer animate-pulse transition-all active:scale-95"
                 >
-                  <span>🚨 Fast Accident / Disaster Report (Guest Mode)</span>
+                  <span>Try synthetic MCI simulation</span>
                 </button>
               )}
             </div>
@@ -67,18 +65,18 @@ export const Hero: React.FC<HeroProps> = ({
 
             {/* Subtitle */}
             <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 font-normal leading-relaxed max-w-2xl">
-              Real-time patient request approval, nearest ICU &amp; blood bank matching, GPS green corridor ambulance tracking, and 1-tap mass casualty disaster triage.
+              A Supabase-backed prototype for emergency resource coordination. Explore hospital inventory, patient requests, and human-reviewed workflows using synthetic data. AI output supports decisions; clinicians remain responsible for care.
             </p>
 
             {/* CTA Buttons */}
             <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <button
                 id="hero-get-started-btn"
-                onClick={onOpenGetStarted}
+                onClick={onExploreResources}
                 className="px-6 py-3.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 group active:scale-98"
               >
                 <Sparkles className="w-4 h-4 text-blue-200 group-hover:rotate-12 transition-transform" />
-                <span>Patient Emergency Portal</span>
+                <span>Find a medical resource</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
 
@@ -87,7 +85,7 @@ export const Hero: React.FC<HeroProps> = ({
                   onClick={onOpenMciReport}
                   className="px-6 py-3.5 text-sm font-black text-white bg-red-600 hover:bg-red-500 rounded-xl shadow-lg shadow-red-600/30 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
                 >
-                  <span>🚨 Report Mass Casualty</span>
+                  <span>Run MCI simulation</span>
                 </button>
               )}
 
@@ -104,16 +102,16 @@ export const Hero: React.FC<HeroProps> = ({
             {/* Trust Highlights */}
             <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-3 gap-4">
               <div>
-                <p className="text-xl font-extrabold text-slate-900 dark:text-white mono">500+</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Hospitals Synced</p>
+                <p className="text-xl font-extrabold text-slate-900 dark:text-white mono">Supabase</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Prototype backend</p>
               </div>
               <div>
-                <p className="text-xl font-extrabold text-slate-900 dark:text-white mono">&lt; 2.4s</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">AI Triage Latency</p>
+                <p className="text-xl font-extrabold text-slate-900 dark:text-white mono">Human review</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Required for care decisions</p>
               </div>
               <div>
-                <p className="text-xl font-extrabold text-slate-900 dark:text-white mono">100%</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Live Telemetry</p>
+                <p className="text-xl font-extrabold text-slate-900 dark:text-white mono">Synthetic</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Demo scenario data</p>
               </div>
             </div>
 
@@ -128,15 +126,15 @@ export const Hero: React.FC<HeroProps> = ({
                 <div className="flex items-center space-x-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
                   <span className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider mono">
-                    Regional Command Center Feed
+                    Example Resource Snapshot
                   </span>
                 </div>
                 <span className="px-2 py-0.5 text-[10px] mono font-bold rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  LIVE STREAM
+                  SYNTHETIC DATA
                 </span>
               </div>
 
-              {/* Grid of Real-Time Resource Status Cards */}
+              {/* Static illustrative records, not live resource status */}
               <div className="space-y-3">
                 
                 {/* 1. ICU Availability */}
@@ -147,13 +145,13 @@ export const Hero: React.FC<HeroProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">St. Jude Trauma Center</p>
-                        <span className="text-[10px] mono font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-1 rounded">2 Bays Free</span>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">Example Hospital</p>
+                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">Sample record</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">ICU Bed #04 (Ventilator Active) • Ready</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Illustrative ICU inventory • not live</p>
                     </div>
                   </div>
-                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">0.8s ago</span>
+                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">Example</span>
                 </div>
 
                 {/* 2. Blood Intelligence */}
@@ -164,13 +162,13 @@ export const Hero: React.FC<HeroProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">Central Red Cross Bank</p>
-                        <span className="text-[10px] mono font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-1 rounded">O- Reserved</span>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">Example Blood Bank</p>
+                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">Sample record</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">4 Units O- Negative Blood reserved for Trauma ER</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Illustrative stock record • no units reserved</p>
                     </div>
                   </div>
-                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">1.2s ago</span>
+                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">Example</span>
                 </div>
 
                 {/* 3. Ambulance Green Corridor */}
@@ -181,13 +179,13 @@ export const Hero: React.FC<HeroProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">Paramedic Unit #12</p>
-                        <span className="text-[10px] mono font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-1 rounded">Preemption ON</span>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">Example Ambulance</p>
+                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">No live connection</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Expressway 9 Lights overridden to Green • ETA 4m</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Routing and traffic control are not connected</p>
                     </div>
                   </div>
-                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">Just now</span>
+                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">Example</span>
                 </div>
 
                 {/* 4. AI Triage Engine */}
@@ -195,14 +193,14 @@ export const Hero: React.FC<HeroProps> = ({
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                     <div className="flex items-center space-x-1.5">
                       <Activity className="w-3.5 h-3.5 text-blue-400" />
-                      <span className="text-xs font-bold text-blue-300 mono">Gemini 3.6 Flash Triage</span>
+                      <span className="text-xs font-bold text-blue-300 mono">Illustrative AI Decision Support</span>
                     </div>
                     <span className="text-[10px] mono text-emerald-400 font-bold bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-800">
-                      RED LEVEL - HIGH PRIORITY
+                      EXAMPLE ONLY
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 font-mono">
-                    STEMI Suspicion • Priority 92/100 • Cath Lab Alert Broadcasted
+                    Example only • Not a diagnosis, triage decision, or dispatch instruction
                   </p>
                 </div>
 
@@ -212,9 +210,9 @@ export const Hero: React.FC<HeroProps> = ({
               <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 <span className="flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Auto-Syncing 1,420 City Sensors
+                  Sample scenario • No live hospital or city systems connected
                 </span>
-                <span className="mono text-[10px]">Region: Metro Zone 1</span>
+                <span className="mono text-[10px]">Fictional scenario</span>
               </div>
 
             </div>

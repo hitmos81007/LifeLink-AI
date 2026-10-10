@@ -29,14 +29,14 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLogin, onOpenGetStarted })
               </span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed max-w-sm font-normal">
-              One platform connecting hospitals, blood banks, ambulances and emergency resources using AI. Unifying critical healthcare infrastructure when seconds count.
+              A demonstration prototype for emergency resource coordination. It uses synthetic records and is not connected to live care networks.
             </p>
 
             {/* Live Operational System Badge */}
             <div className="inline-flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
               <span className="text-slate-200 font-semibold mono text-[11px]">
-                All AI Emergency Networks Operational
+                Prototype • Synthetic data only
               </span>
             </div>
           </div>
@@ -51,7 +51,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLogin, onOpenGetStarted })
               <li><a href="#features" className="hover:text-white transition-colors">ICU Availability</a></li>
               <li><a href="#features" className="hover:text-white transition-colors">Ambulance Coordination</a></li>
               <li><a href="#features" className="hover:text-white transition-colors">Medicine Intelligence</a></li>
-              <li><a href="#features" className="hover:text-white transition-colors">Disease Outbreak Prediction</a></li>
+              <li><a href="#features" className="hover:text-white transition-colors">Disease Trend Early-Warning Demo</a></li>
               <li><a href="#features" className="hover:text-white transition-colors">Emergency Analytics</a></li>
             </ul>
           </div>
@@ -59,14 +59,13 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLogin, onOpenGetStarted })
           {/* Col 2: Compliance & Standards */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-white uppercase tracking-wider mono">
-              Compliance & Tech
+              Prototype Stack
             </h4>
             <ul className="space-y-2 text-xs text-slate-400">
-              <li><span className="text-slate-300">HIPAA & GDPR Compliant</span></li>
-              <li><span className="text-slate-300">HL7 FHIR v4 API Native</span></li>
-              <li><span className="text-slate-300">Gemini 3.6 Flash Engine</span></li>
-              <li><span className="text-slate-300">Firebase Auth & Firestore</span></li>
-              <li><span className="text-slate-300">256-bit AES Encryption</span></li>
+              <li><span className="text-slate-300">Supabase Auth</span></li>
+              <li><span className="text-slate-300">PostgreSQL + row-level security</span></li>
+              <li><span className="text-slate-300">Human-reviewed workflows</span></li>
+              <li><span className="text-slate-300">AI recommendations are advisory</span></li>
             </ul>
           </div>
 
@@ -86,9 +85,9 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLogin, onOpenGetStarted })
                 onClick={onOpenGetStarted}
                 className="text-emerald-400 hover:text-emerald-300 block font-semibold cursor-pointer"
               >
-                → Request API Sandbox
+                → Prototype guide
               </button>
-              <a href="#contact" className="text-slate-400 hover:text-white block">Contact Integration Team</a>
+              <a href="#contact" className="text-slate-400 hover:text-white block">Prototype information</a>
             </div>
           </div>
 
@@ -96,7 +95,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLogin, onOpenGetStarted })
 
         {/* Bottom Bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
-          <p>© 2026 LifeLink AI Platforms Inc. All rights reserved.</p>
+          <p>LifeLink AI • Demonstration prototype</p>
 
           <div className="flex items-center space-x-4 text-[11px] font-mono">
             <span>Built with React + Tailwind CSS</span>

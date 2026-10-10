@@ -48,19 +48,13 @@ export const HealthcareChatAssistant: React.FC = () => {
     {
       id: 'msg_welcome',
       sender: 'assistant',
-      text: `Hello! I am your **LifeLink AI Healthcare Assistant**, powered by Gemini 3.6 Flash.
+      text: `This is an informational assistant in a healthcare logistics prototype. Use synthetic examples only.
 
-I am equipped with specialized clinical intelligence across **5 Core Capabilities**:
-1. 🩺 **Patient Questions**: Symptom triage guidance, pre-consultation inquiries, and medication advice.
-2. 🏥 **Hospital Resource Prediction**: ICU occupancy forecasts, ER throughput bottlenecks, and bed capacity warnings.
-3. 💊 **Medicine Stock Recommendation**: Reorder points, pharmaceutical safety stock calculations, and antibiotic buffer levels.
-4. 🩸 **Blood Shortage Explanation**: O-negative depletion factors, cross-match substitution matrices, and donor drive triggers.
-5. 📈 **Disease Trend Explanation**: Outbreak velocity, seasonal flu/RSV/Dengue surge patterns, and epidemiological insights.
+It can discuss general logistics concepts and help interpret information you provide. It is not connected to live hospital data and cannot diagnose, triage, recommend treatment, reserve resources, or dispatch services. Qualified humans remain responsible for decisions.
 
-How can I assist your medical team or patient inquiry today?`,
+Do not enter patient details or personal health information.`,
       capability: 'all',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      model: 'gemini-3.6-flash'
     }
   ]);
 
@@ -78,49 +72,49 @@ How can I assist your medical team or patient inquiry today?`,
       icon: Activity,
       color: 'text-blue-600 bg-blue-50 border-blue-200',
       presetPrompts: [
-        'What are early warning signs of acute appendicitis vs general stomach pain?',
-        'What pre-surgery fasting instructions should a patient follow before general anesthesia?',
-        'Is it safe to take Paracetamol with Amoxicillin for a child with fever?'
+        'What information should someone have ready when contacting a licensed clinician about a health concern? Keep this to communication and access steps, not diagnosis or treatment.',
+        'In a fictional emergency, what information should a caller share with local emergency services? Do not provide triage or treatment advice.',
+        'How can a patient ask their care team to explain an unfamiliar medical term?'
       ]
     },
     hospital_resource_prediction: {
-      label: 'Hospital Resource Prediction',
+      label: 'Hospital Resource Estimates',
       icon: Building2,
       color: 'text-indigo-600 bg-indigo-50 border-indigo-200',
       presetPrompts: [
-        'Explain why ICU bed utilization is predicted to reach 94% this weekend.',
-        'What operational factors drive ER wait time surges between 18:00 and 22:00?',
-        'Forecast ventilator requirements for Metro Hospital given projected admission rates.'
+        'Fictional example: 3 confirmed ICU-bed requests and 2 available ICU beds were recorded. Explain this simple comparison without claiming a future forecast or recommending an action.',
+        'What data would be needed to estimate emergency-department wait times? Do not invent values.',
+        'A fictional facility has 8 recorded general beds and 4 confirmed bed requests in 30 days. Explain the limits of using this small count as a demand estimate.'
       ]
     },
     medicine_stock_recommendation: {
-      label: 'Medicine Stock Recommendation',
+      label: 'Medicine Inventory Discussion',
       icon: Pill,
       color: 'text-emerald-600 bg-emerald-50 border-emerald-200',
       presetPrompts: [
-        'Provide reorder recommendations for Amoxicillin 500mg given a 30% infection surge.',
-        'Calculate recommended safety stock levels for Insulin Glargine vials in heatwave season.',
-        'How should a pharmacy manage stock buffers for critical emergency resuscitation drugs?'
+        'Fictional inventory example: 120 units on hand and 60 units used in 30 days. Explain which additional inputs a qualified pharmacist would need before setting a reorder point; do not recommend a quantity.',
+        'What inventory fields help a pharmacy review stock status? Use general logistics terms and do not give medication or treatment advice.',
+        'How can a hospital document a human-reviewed medicine stock transfer in a synthetic example?'
       ]
     },
     blood_shortage_explanation: {
-      label: 'Blood Shortage Explanation',
+      label: 'Blood Inventory Discussion',
       icon: Droplet,
       color: 'text-rose-600 bg-rose-50 border-rose-200',
       presetPrompts: [
-        'Why is there a critical shortage of O-negative blood in central blood banks?',
-        'What universal compatibility alternatives exist if O-negative blood is exhausted in surgery?',
-        'How should a blood bank structure an emergency donor campaign for A-negative reserves?'
+        'Fictional example: a blood bank reports 12 available units of one blood type. Explain what additional data is needed to assess regional stock status; do not discuss transfusion decisions.',
+        'What fields should a synthetic blood-inventory transfer request contain for human review? Do not make compatibility or transfusion recommendations.',
+        'How can a logistics dashboard show blood inventory counts without implying clinical suitability?'
       ]
     },
     disease_trend_explanation: {
-      label: 'Disease Trend Explanation',
+      label: 'Synthetic Trend Concepts',
       icon: TrendingUp,
       color: 'text-amber-600 bg-amber-50 border-amber-200',
       presetPrompts: [
-        'Explain the recent 35% spike in viral respiratory cases across region A.',
-        'What environmental drivers correlate with the current regional Dengue fever outbreak?',
-        'Analyze epidemiological patterns for Influenza A strain mutation velocity.'
+        'Fictional example: a region recorded 14 reports this week and 10 last week. Calculate the percentage change and state that this example does not establish an outbreak.',
+        'What verified data sources and review steps would be needed before discussing a disease trend? Do not infer a current outbreak.',
+        'Explain why a change in synthetic report counts alone is not enough to establish an epidemiological trend.'
       ]
     }
   };
@@ -155,7 +149,7 @@ How can I assist your medical team or patient inquiry today?`,
         body: JSON.stringify({
           message: queryText,
           capability: cap,
-          history: newHistory.map(m => ({
+          history: messages.map(m => ({
             role: m.sender === 'user' ? 'user' : 'model',
             text: m.text
           }))
@@ -173,7 +167,7 @@ How can I assist your medical team or patient inquiry today?`,
             text: data.reply,
             capability: cap,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            model: data.model || 'gemini-3.6-flash'
+            model: data.model
           }
         ]);
       } else {
@@ -181,16 +175,15 @@ How can I assist your medical team or patient inquiry today?`,
       }
     } catch (err: any) {
       console.error('Error sending message to /chat:', err);
-      // Fallback message
+      // Fail clearly; never fabricate an answer when the model endpoint is unavailable.
       setMessages(prev => [
         ...prev,
         {
           id: `asst_err_${Date.now()}`,
           sender: 'assistant',
-          text: `### LifeLink Healthcare AI Guidance\n\nI have processed your query regarding **${queryText}**.\n\n- **Clinical Status**: Request recorded in intelligence queue.\n- **Recommendation**: For acute clinical emergencies, consult the chief medical director or dispatch ALS unit immediately.\n- **Data Connectivity**: Connected to Gemini 3.6 Flash server endpoint.`,
+          text: 'The AI service is unavailable. No answer was generated and your request was not recorded. Please try again later.',
           capability: cap,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          model: 'gemini-3.6-flash'
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
     } finally {
@@ -209,10 +202,9 @@ How can I assist your medical team or patient inquiry today?`,
       {
         id: 'msg_welcome',
         sender: 'assistant',
-        text: `Conversation reset. I am ready for your next healthcare query. Select a capability preset or type your message below.`,
+        text: `Use synthetic examples only. This assistant is informational and not for diagnosis, triage, treatment, or dispatch. Do not enter personal health information.`,
         capability: 'all',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        model: 'gemini-3.6-flash'
       }
     ]);
   };
@@ -229,14 +221,14 @@ How can I assist your medical team or patient inquiry today?`,
           <div>
             <div className="flex items-center space-x-2">
               <h2 className="text-sm sm:text-base font-extrabold tracking-tight font-sans">
-                LifeLink Gemini Healthcare AI Assistant
+                LifeLink AI Prototype Assistant
               </h2>
               <span className="px-2 py-0.5 text-[10px] mono font-bold rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                POST /chat
+                Informational only
               </span>
             </div>
             <p className="text-xs text-slate-400 font-normal">
-              Gemini 3.6 Flash Decision Engine • 5 Core Clinical Capabilities
+              AI output is advisory • human review required
             </p>
           </div>
         </div>
@@ -305,7 +297,7 @@ How can I assist your medical team or patient inquiry today?`,
               <button
                 onClick={() => {
                   setSelectedCapability('patient_questions');
-                  handleSendMessage('What are early warning signs of acute appendicitis vs general stomach pain?', 'patient_questions');
+                  handleSendMessage('What information should someone have ready when contacting a licensed clinician about a health concern? Keep this to communication and access steps, not diagnosis or treatment.', 'patient_questions');
                 }}
                 className="px-2.5 py-1 rounded-md bg-white hover:bg-blue-50 text-slate-800 border border-slate-200 text-xs font-medium cursor-pointer transition-colors"
               >
@@ -314,7 +306,7 @@ How can I assist your medical team or patient inquiry today?`,
               <button
                 onClick={() => {
                   setSelectedCapability('hospital_resource_prediction');
-                  handleSendMessage('Explain why ICU bed utilization is predicted to reach 94% this weekend.', 'hospital_resource_prediction');
+                  handleSendMessage('Fictional example: 3 confirmed ICU-bed requests and 2 available ICU beds were recorded. Explain this simple comparison without claiming a future forecast or recommending an action.', 'hospital_resource_prediction');
                 }}
                 className="px-2.5 py-1 rounded-md bg-white hover:bg-indigo-50 text-slate-800 border border-slate-200 text-xs font-medium cursor-pointer transition-colors"
               >
@@ -323,29 +315,29 @@ How can I assist your medical team or patient inquiry today?`,
               <button
                 onClick={() => {
                   setSelectedCapability('medicine_stock_recommendation');
-                  handleSendMessage('Provide reorder recommendations for Amoxicillin 500mg given a 30% infection surge.', 'medicine_stock_recommendation');
+                  handleSendMessage('Fictional inventory example: 120 units on hand and 60 units used in 30 days. Explain which additional inputs a qualified pharmacist would need before setting a reorder point; do not recommend a quantity.', 'medicine_stock_recommendation');
                 }}
                 className="px-2.5 py-1 rounded-md bg-white hover:bg-emerald-50 text-slate-800 border border-slate-200 text-xs font-medium cursor-pointer transition-colors"
               >
-                💊 Antibiotic Reorder
+                💊 Medicine Inventory
               </button>
               <button
                 onClick={() => {
                   setSelectedCapability('blood_shortage_explanation');
-                  handleSendMessage('Why is there a critical shortage of O-negative blood in central blood banks?', 'blood_shortage_explanation');
+                  handleSendMessage('Fictional example: a blood bank reports 12 available units of one blood type. Explain what additional data is needed to assess regional stock status; do not discuss transfusion decisions.', 'blood_shortage_explanation');
                 }}
                 className="px-2.5 py-1 rounded-md bg-white hover:bg-rose-50 text-slate-800 border border-slate-200 text-xs font-medium cursor-pointer transition-colors"
               >
-                🩸 O-Negative Blood Shortage
+                🩸 Blood Inventory Example
               </button>
               <button
                 onClick={() => {
                   setSelectedCapability('disease_trend_explanation');
-                  handleSendMessage('Explain the recent 35% spike in viral respiratory cases across region A.', 'disease_trend_explanation');
+                  handleSendMessage('Fictional example: a region recorded 14 reports this week and 10 last week. Calculate the percentage change and state that this example does not establish an outbreak.', 'disease_trend_explanation');
                 }}
                 className="px-2.5 py-1 rounded-md bg-white hover:bg-amber-50 text-slate-800 border border-slate-200 text-xs font-medium cursor-pointer transition-colors"
               >
-                📈 Dengue/Flu Outbreak Spike
+                📈 Synthetic Trend Example
               </button>
             </>
           ) : (
@@ -413,7 +405,7 @@ How can I assist your medical team or patient inquiry today?`,
 
                   {!isUser && (
                     <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                      <span>Model: {msg.model || 'gemini-3.6-flash'}</span>
+                      {msg.model && <span>Model: {msg.model}</span>}
                       <button
                         onClick={() => handleCopy(msg.text, msg.id)}
                         className="text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
@@ -447,7 +439,7 @@ How can I assist your medical team or patient inquiry today?`,
             </div>
             <div className="bg-white border border-slate-200 p-3.5 rounded-2xl rounded-tl-xs shadow-xs flex items-center space-x-2 text-xs text-slate-600">
               <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-              <span className="font-medium font-mono">Gemini 3.6 Flash analyzing healthcare query...</span>
+              <span className="font-medium font-mono">Generating an informational response...</span>
             </div>
           </div>
         )}
@@ -470,7 +462,7 @@ How can I assist your medical team or patient inquiry today?`,
             onChange={(e) => setInputMessage(e.target.value)}
             placeholder={
               selectedCapability === 'all'
-                ? "Ask anything about symptoms, ICU predictions, drug stock, blood supply, or disease trends..."
+                ? "Ask a general question using a fictional example..."
                 : `Ask about ${capabilityMeta[selectedCapability]?.label}...`
             }
             className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium placeholder:text-slate-400"
@@ -495,7 +487,7 @@ How can I assist your medical team or patient inquiry today?`,
         {/* Clinical Disclaimer Footnote */}
         <div className="mt-2 text-[10px] text-slate-400 flex items-center justify-center gap-1 text-center font-sans">
           <ShieldAlert className="w-3 h-3 text-amber-500 shrink-0" />
-          <span>LifeLink AI Healthcare Assistant provides clinical decision support. Always verify with qualified medical staff.</span>
+          <span>Not for personal medical questions or emergency care. Do not enter patient details; use synthetic examples only.</span>
         </div>
       </div>
 

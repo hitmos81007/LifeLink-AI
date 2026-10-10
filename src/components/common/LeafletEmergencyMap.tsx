@@ -18,7 +18,7 @@ import {
   CheckCircle2,
   ShieldCheck
 } from 'lucide-react';
-import { BASEMAP_LAYERS, BasemapLayerConfig, CARTO_API_KEY, DEFAULT_BASEMAP } from '../../config/mapConfig';
+import { BASEMAP_LAYERS, BasemapLayerConfig, DEFAULT_BASEMAP } from '../../config/mapConfig';
 
 export interface MapEntity {
   id: string;
@@ -33,7 +33,18 @@ export interface MapEntity {
     totalBeds?: number;
     availableBeds?: number;
     ambulanceUnits?: number;
-    bloodStock?: Record<string, number>;
+    oxygenStock?: Array<{ type: string; quantity: number | null; unit: string | null; availability: string | null }>;
+    bloodStock?: Record<string, number | null>;
+    requestedBloodGroup?: string | null;
+    requestedBloodQuantity?: number | null;
+    requestedBloodAvailability?: string | null;
+    requestedBloodFreshness?: 'Fresh' | 'Stale' | 'Unknown';
+    resourceFreshness?: Array<{
+      resource: string;
+      freshness: 'Fresh' | 'Stale' | 'Unknown';
+      updatedAt: string | null;
+      availability?: string | null;
+    }>;
     tempCelsius?: number;
     vehicleId?: string;
     driverName?: string;
@@ -41,6 +52,7 @@ export interface MapEntity {
     status?: string;
     distanceKm?: number;
     etaMinutes?: number;
+    hasCoordinates?: boolean;
     casualties?: number;
     triageRed?: number;
     triageYellow?: number;
@@ -50,6 +62,10 @@ export interface MapEntity {
   };
 }
 
+const escapeHtml = (value: unknown): string => String(value).replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[char] ?? char));
+
 interface LeafletEmergencyMapProps {
   entities?: MapEntity[];
   center?: [number, number];
@@ -58,11 +74,13 @@ interface LeafletEmergencyMapProps {
   selectableLocation?: boolean;
   selectedLocation?: { lat: number; lng: number } | null;
   onLocationSelect?: (location: { lat: number; lng: number; address?: string }) => void;
+  locationSelectionHint?: string;
   selectedEntityId?: string | null;
   onEntitySelect?: (entity: MapEntity) => void;
   activeRouteDestinationId?: string | null;
   showRadiusCircle?: boolean;
   radiusMeters?: number;
+  showGpsControl?: boolean;
   interactive?: boolean;
   compact?: boolean;
   initialBasemap?: 'cartoVoyager' | 'cartoDark' | 'cartoPositron' | 'osmStandard';
@@ -76,14 +94,16 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
   selectableLocation = false,
   selectedLocation,
   onLocationSelect,
+  locationSelectionHint = 'Click the map to select a location',
   selectedEntityId,
   onEntitySelect,
   activeRouteDestinationId,
   showRadiusCircle = false,
   radiusMeters = 3000,
+  showGpsControl = true,
   interactive = true,
   compact = false,
-  initialBasemap = 'cartoVoyager'
+  initialBasemap = 'osmStandard'
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -148,7 +168,7 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
           onLocationSelect({
             lat: Math.round(lat * 1000000) / 1000000,
             lng: Math.round(lng * 1000000) / 1000000,
-            address: `Geotagged (${lat.toFixed(4)}, ${lng.toFixed(4)})`
+            address: 'Selected map point'
           });
         });
       }
@@ -288,7 +308,7 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
       const isSelected = selectedEntityId === entity.id;
       const icon = createCustomIcon(entity.type, entity.name, isSelected, entity.details);
 
-      const marker = L.marker(latLng, { icon, riseOnHover: true });
+      const marker = L.marker(latLng, { icon, riseOnHover: true, bubblingMouseEvents: false });
 
       // Build rich popup
       let popupContent = `
@@ -301,54 +321,80 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
             };">
               ${entity.type.replace('_', ' ')}
             </span>
-            ${entity.details.distanceKm ? `<span style="font-size: 10px; font-weight: bold; background: #F1F5F9; padding: 2px 6px; border-radius: 4px;">${entity.details.distanceKm} km</span>` : ''}
+            ${entity.details.distanceKm != null ? `<span style="font-size: 10px; font-weight: bold; background: #F1F5F9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(entity.details.distanceKm)} km</span>` : ''}
           </div>
-          <h4 style="margin: 0 0 4px 0; font-size: 13px; font-weight: 700; line-height: 1.3;">${entity.name}</h4>
-          <p style="margin: 0 0 8px 0; font-size: 11px; color: #64748B;">${entity.address}</p>
+          <h4 style="margin: 0 0 4px 0; font-size: 13px; font-weight: 700; line-height: 1.3;">${escapeHtml(entity.name)}</h4>
+          <p style="margin: 0 0 8px 0; font-size: 11px; color: #64748B;">${escapeHtml(entity.address)}</p>
       `;
 
       if (entity.type === 'hospital') {
         popupContent += `
           <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; padding: 6px 8px; font-size: 11px; margin-bottom: 6px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-              <span><strong>ICU Beds:</strong></span> <span style="color: #16A34A; font-weight: bold;">${entity.details.icuBeds ?? 'Available'} Available</span>
+              <span><strong>ICU beds recorded:</strong></span> <span style="color: #16A34A; font-weight: bold;">${entity.details.icuBeds == null ? 'Not recorded' : escapeHtml(entity.details.icuBeds)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-              <span><strong>Trauma Level:</strong></span> <span>${entity.details.traumaLevel ?? 'Level 1'}</span>
+              <span><strong>Trauma capability:</strong></span> <span>${entity.details.traumaLevel == null ? 'Not recorded' : escapeHtml(entity.details.traumaLevel)}</span>
             </div>
             <div style="display: flex; justify-content: space-between;">
-              <span><strong>Total Capacity:</strong></span> <span>${entity.details.availableBeds ?? 20} / ${entity.details.totalBeds ?? 50} beds</span>
+              <span><strong>Beds recorded (available / total):</strong></span> <span>${entity.details.availableBeds == null ? 'Not recorded' : escapeHtml(entity.details.availableBeds)} / ${entity.details.totalBeds == null ? 'Not recorded' : escapeHtml(entity.details.totalBeds)}</span>
             </div>
           </div>
         `;
+        if (entity.details.oxygenStock?.length) {
+          popupContent += `
+            <div style="background: #F0F9FF; border: 1px solid #BAE6FD; border-radius: 6px; padding: 6px 8px; font-size: 10px; margin-bottom: 6px;">
+              <div style="font-weight: 700; color: #0369A1; margin-bottom: 3px;">Reported oxygen inventory:</div>
+              ${entity.details.oxygenStock.map((item) => `<div>${escapeHtml(item.type)}: ${item.quantity == null ? 'not recorded' : escapeHtml(item.quantity)} ${escapeHtml(item.unit || '')} • ${escapeHtml(item.availability || 'Unknown')}</div>`).join('')}
+            </div>
+          `;
+        }
       } else if (entity.type === 'blood_bank' && entity.details.bloodStock) {
         popupContent += `
           <div style="background: #FFF1F2; border: 1px solid #FECDD3; border-radius: 6px; padding: 6px 8px; font-size: 11px; margin-bottom: 6px;">
-            <div style="font-weight: 700; color: #BE123C; margin-bottom: 4px;">Cold Storage Stock (Units):</div>
+            <div style="font-weight: 700; color: #BE123C; margin-bottom: 4px;">Reported blood inventory (units):</div>
+            ${entity.details.requestedBloodGroup ? `<div style="padding: 4px 6px; margin-bottom: 5px; background: white; border: 1px solid #FDA4AF; border-radius: 4px;"><strong>Selected group ${escapeHtml(entity.details.requestedBloodGroup)}:</strong> ${entity.details.requestedBloodQuantity == null ? 'not recorded' : `${escapeHtml(entity.details.requestedBloodQuantity)} reported units`} • ${escapeHtml(entity.details.requestedBloodAvailability || 'Unknown')} • ${escapeHtml(entity.details.requestedBloodFreshness || 'Unknown')}</div>` : ''}
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center;">
-              ${Object.entries(entity.details.bloodStock).slice(0, 4).map(([grp, units]) => `
+              ${Object.entries(entity.details.bloodStock).map(([grp, units]) => `
                 <div style="background: white; border: 1px solid #FDA4AF; border-radius: 4px; padding: 2px;">
-                  <div style="font-weight: 800; font-size: 9px; color: #9F1239;">${grp}</div>
-                  <div style="font-size: 10px; font-weight: bold;">${units}</div>
+                  <div style="font-weight: 800; font-size: 9px; color: #9F1239;">${escapeHtml(grp)}</div>
+                  <div style="font-size: 10px; font-weight: bold;">${units == null ? 'Unknown' : escapeHtml(units)}</div>
                 </div>
               `).join('')}
             </div>
+            <div style="font-size: 9px; color: #475569; margin-top: 4px;">Reported inventory only; units are not reserved and clinical suitability must be verified by qualified staff.</div>
           </div>
         `;
       } else if (entity.type === 'ambulance') {
         popupContent += `
           <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px; padding: 6px 8px; font-size: 11px; margin-bottom: 6px;">
-            <div><strong>Vehicle:</strong> ${entity.details.vehicleId ?? 'ALS-01'}</div>
-            <div><strong>Driver:</strong> ${entity.details.driverName ?? 'Paramedic Team'}</div>
-            <div style="color: #047857; font-weight: 700; margin-top: 2px;">Status: ${entity.details.status ?? 'Active En Route'}</div>
+            ${entity.details.vehicleId ? `<div><strong>Vehicle:</strong> ${escapeHtml(entity.details.vehicleId)}</div>` : ''}
+            ${entity.details.driverName ? `<div><strong>Driver:</strong> ${escapeHtml(entity.details.driverName)}</div>` : ''}
+            ${entity.details.status ? `<div style="color: #047857; font-weight: 700; margin-top: 2px;">Recorded status: ${escapeHtml(entity.details.status)}</div>` : '<div>Vehicle status not recorded</div>'}
           </div>
         `;
       } else if (entity.type === 'mci') {
         popupContent += `
           <div style="background: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 6px; padding: 6px 8px; font-size: 11px; margin-bottom: 6px;">
-            <div style="font-weight: 800; color: #991B1B;">MASS CASUALTY INCIDENT</div>
-            <div>Estimated Casualties: <strong>${entity.details.casualties ?? '15+'}</strong></div>
-            <div style="font-size: 10px; color: #B91C1C;">Multi-Hospital Green Corridors Active</div>
+            <div style="font-weight: 800; color: #991B1B;">SYNTHETIC MCI SCENARIO</div>
+            <div>Example casualty count: <strong>${entity.details.casualties == null ? 'Not provided' : escapeHtml(entity.details.casualties)}</strong></div>
+            <div style="font-size: 10px; color: #B91C1C;">Simulation only • no alerts or dispatch</div>
+          </div>
+        `;
+      }
+
+      if (entity.details.resourceFreshness?.length) {
+        popupContent += `
+          <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 6px 8px; font-size: 10px; margin-bottom: 6px;">
+            <div style="font-weight: 700; margin-bottom: 3px;">Reported availability freshness</div>
+            ${entity.details.resourceFreshness.map((item) => {
+              const updatedAt = item.updatedAt && Number.isFinite(Date.parse(item.updatedAt))
+                ? new Date(item.updatedAt).toLocaleString()
+                : 'update time unavailable';
+              const color = item.freshness === 'Fresh' ? '#047857' : item.freshness === 'Stale' ? '#B45309' : '#475569';
+              return `<div style="color: ${color};">${escapeHtml(item.resource)}: ${escapeHtml(item.availability || 'status unknown')} • ${escapeHtml(item.freshness)} • ${escapeHtml(updatedAt)}</div>`;
+            }).join('')}
+            <div style="margin-top: 3px; color: #475569;">Informational only; availability is not reserved.</div>
           </div>
         `;
       }
@@ -356,7 +402,7 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
       if (entity.phone) {
         popupContent += `
           <div style="font-size: 10px; color: #475569; display: flex; align-items: center; gap: 4px;">
-            <span>📞 Direct Line:</span> <strong>${entity.phone}</strong>
+            <span>📞 Facility contact:</span> <strong>${escapeHtml(entity.phone)}</strong>
           </div>
         `;
       }
@@ -387,7 +433,7 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
             <div style="width: 38px; height: 38px; background: #DC2626; border: 3px solid #FFFFFF; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 4px 12px rgba(220,38,38,0.5);">
               📍
             </div>
-            <span style="position: absolute; top: -8px; background: #991B1B; color: white; font-size: 8px; font-weight: 900; padding: 1px 5px; border-radius: 9999px; border: 1.5px solid white;">PATIENT</span>
+            <span style="position: absolute; top: -8px; background: #991B1B; color: white; font-size: 8px; font-weight: 900; padding: 1px 5px; border-radius: 9999px; border: 1.5px solid white;">SEARCH</span>
           </div>
         `,
         className: 'custom-user-location-pin',
@@ -398,8 +444,8 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
       const userMarker = L.marker(selectedLatLng, { icon: userPinIcon, zIndexOffset: 1000 });
       userMarker.bindPopup(`
         <div style="font-family: system-ui; padding: 4px; text-align: center;">
-          <strong style="color: #DC2626; font-size: 12px;">🚨 Emergency Incident Location</strong>
-          <p style="margin: 4px 0 0 0; font-size: 11px; color: #475569;">${selectedLocation.lat.toFixed(4)}, ${selectedLocation.lng.toFixed(4)}</p>
+            <strong style="color: #DC2626; font-size: 12px;">Search location</strong>
+            <p style="margin: 4px 0 0 0; font-size: 11px; color: #475569;">${selectedLocation.lat.toFixed(4)}, ${selectedLocation.lng.toFixed(4)}</p>
         </div>
       `);
       markersGroup.addLayer(userMarker);
@@ -418,27 +464,23 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
       }).addTo(map);
 
       radiusCircleRef.current = circle;
+      bounds.extend(circle.getBounds());
     }
 
-    // Render Live Dynamic Polyline Route
+    // Draw a straight-line visual connector only; it is not road routing.
     if (originPatientLocation && targetDestinationLocation) {
-      // Calculate smooth intermediate waypoint curve
       const [startLat, startLng] = originPatientLocation;
       const [endLat, endLng] = targetDestinationLocation;
-      const midLat = (startLat + endLat) / 2 + (Math.random() - 0.5) * 0.005;
-      const midLng = (startLng + endLng) / 2 + (Math.random() - 0.5) * 0.005;
-
       const path: [number, number][] = [
         [startLat, startLng],
-        [midLat, midLng],
         [endLat, endLng]
       ];
 
       const polyline = L.polyline(path, {
-        color: '#2563EB',
-        weight: 5,
-        opacity: 0.85,
-        dashArray: '10, 8',
+        color: '#64748B',
+        weight: 3,
+        opacity: 0.75,
+        dashArray: '6, 8',
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(map);
@@ -476,18 +518,9 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
         setGeolocating(false);
       },
       (err) => {
-        console.warn('Geolocation error, fallback to urban center:', err.message);
+        console.warn('Geolocation error:', err.message);
         setGeolocating(false);
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.flyTo(center, 14, { animate: true });
-        }
-        if (onLocationSelect) {
-          onLocationSelect({
-            lat: center[0],
-            lng: center[1],
-            address: 'District Central Emergency Grid'
-          });
-        }
+        alert('Could not get your location. Choose a point on the map or enter coordinates manually.');
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
@@ -575,8 +608,8 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
             {showBasemapMenu && (
               <div className="absolute right-0 mt-1.5 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 z-[1100] space-y-1 text-xs">
                 <div className="px-2 py-1 text-[10px] font-mono text-slate-400 border-b border-slate-800 flex items-center justify-between">
-                  <span>CARTO BASEMAPS</span>
-                  <span className="text-emerald-400 font-bold">API ACTIVE</span>
+                  <span>MAP LAYERS</span>
+                  <span className="text-slate-400 font-bold">BASEMAP OPTIONS</span>
                 </div>
                 {Object.entries(BASEMAP_LAYERS).map(([key, cfg]) => (
                   <button
@@ -599,7 +632,7 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
             )}
           </div>
 
-          {selectableLocation && (
+          {selectableLocation && showGpsControl && (
             <button
               onClick={handleLocateMe}
               disabled={geolocating}
@@ -623,17 +656,23 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
         </div>
       </div>
 
-      {/* Bottom Hint / API Key Status Banner */}
+      {/* Map source and location selection hint */}
       <div className="absolute bottom-2 left-2 z-[1000] flex items-center gap-2 pointer-events-none">
         <div className="bg-slate-950/90 backdrop-blur-md border border-slate-700/80 text-slate-300 text-[10px] px-2.5 py-1 rounded-lg shadow-lg flex items-center gap-1.5 pointer-events-auto">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="font-mono">CARTO Basemaps API: Connected</span>
+          <span className="font-mono">Map source: {BASEMAP_LAYERS[activeBasemapKey]?.name || 'OpenStreetMap'}</span>
         </div>
+
+        {activeRouteDestinationId && (
+          <div className="bg-slate-950/90 backdrop-blur-md border border-amber-700/80 text-amber-200 text-[10px] px-2.5 py-1 rounded-lg shadow-lg">
+            Straight-line illustration only • not navigation or dispatch
+          </div>
+        )}
 
         {selectableLocation && (
           <div className="bg-slate-950/90 backdrop-blur-md border border-slate-700 text-amber-300 text-[10px] sm:text-[11px] px-2.5 py-1 rounded-lg shadow-lg flex items-center gap-1.5 pointer-events-auto">
             <MapPin className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
-            <span>Click map to drop emergency scene pin</span>
+            <span>{escapeHtml(locationSelectionHint)}</span>
           </div>
         )}
       </div>
