@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION public.update_general_bed_inventory(
   p_total_beds INTEGER,
   p_occupied_beds INTEGER,
   p_minimum_beds INTEGER,
-  p_expected_updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL,
+  p_expected_updated_at TIMESTAMPTZ DEFAULT NULL,
   p_reason_code TEXT DEFAULT NULL
 ) RETURNS public.general_bed_inventory
 LANGUAGE plpgsql
@@ -98,8 +98,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.update_general_bed_inventory(UUID, INTEGER, INTEGER, INTEGER, TIMESTAMP WITHOUT TIME ZONE, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.update_general_bed_inventory(UUID, INTEGER, INTEGER, INTEGER, TIMESTAMP WITHOUT TIME ZONE, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.update_general_bed_inventory(UUID, INTEGER, INTEGER, INTEGER, TIMESTAMPTZ, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.update_general_bed_inventory(UUID, INTEGER, INTEGER, INTEGER, TIMESTAMPTZ, TEXT) TO authenticated;
 
 DO $$
 DECLARE v_policy RECORD;

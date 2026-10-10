@@ -1,7 +1,7 @@
 -- Read-only checks after migrations 20261008320000, 20261008330000 and
 -- 20261009107000 have been reconciled and applied.
 DO $$
-DECLARE v_fn regprocedure := 'public.update_general_bed_inventory(uuid,integer,integer,integer,timestamp without time zone,text)'::regprocedure;
+DECLARE v_fn regprocedure := 'public.update_general_bed_inventory(uuid,integer,integer,integer,timestamp with time zone,text)'::regprocedure;
 BEGIN
   IF NOT (SELECT prosecdef FROM pg_proc WHERE oid=v_fn) THEN
     RAISE EXCEPTION 'General-bed update RPC must be SECURITY DEFINER';
