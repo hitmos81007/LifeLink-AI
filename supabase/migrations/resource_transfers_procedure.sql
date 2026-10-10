@@ -139,7 +139,7 @@ BEGIN
     p_operator_id,
     'RESOURCE_TRANSFER_COMPLETED',
     'resource_transfers',
-    p_transfer_id::text,
+    p_transfer_id,
     jsonb_build_object('status', v_transfer.status),
     jsonb_build_object(
       'status', 'Completed',

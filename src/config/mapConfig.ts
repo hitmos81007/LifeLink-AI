@@ -1,11 +1,7 @@
 /**
  * Lifelink AI - Map & Carto Basemaps Configuration
- * Real-time GIS rendering for emergency logistics and disaster dispatch.
+ * Map display settings for synthetic prototype scenarios; no live dispatch feed is connected.
  */
-
-export const CARTO_API_KEY: string = (
-  typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_CARTO_API_KEY
-) || 'cb1_48rb_1_3e1ec15e796b79a0153afc1c';
 
 export interface BasemapLayerConfig {
   id: string;
@@ -21,7 +17,7 @@ export const BASEMAP_LAYERS: Record<string, BasemapLayerConfig> = {
   cartoVoyager: {
     id: 'cartoVoyager',
     name: 'CARTO Voyager (Day/Street)',
-    url: `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`,
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     subdomains: 'abcd',
     maxZoom: 20,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
@@ -30,7 +26,7 @@ export const BASEMAP_LAYERS: Record<string, BasemapLayerConfig> = {
   cartoDark: {
     id: 'cartoDark',
     name: 'CARTO Dark Matter (Tactical/Night)',
-    url: `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`,
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     subdomains: 'abcd',
     maxZoom: 20,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
@@ -39,7 +35,7 @@ export const BASEMAP_LAYERS: Record<string, BasemapLayerConfig> = {
   cartoPositron: {
     id: 'cartoPositron',
     name: 'CARTO Positron (Clean/Clinical)',
-    url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`,
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
     subdomains: 'abcd',
     maxZoom: 20,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
@@ -56,4 +52,4 @@ export const BASEMAP_LAYERS: Record<string, BasemapLayerConfig> = {
   }
 };
 
-export const DEFAULT_BASEMAP = BASEMAP_LAYERS.cartoVoyager;
+export const DEFAULT_BASEMAP = BASEMAP_LAYERS.osmStandard;

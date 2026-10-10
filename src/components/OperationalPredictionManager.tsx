@@ -17,7 +17,8 @@ import {
   X
 } from 'lucide-react';
 import {
-  generateAndStoreRealForecasts,
+  generateOperationalBaselineEstimates,
+  recalculateOperationalBaselineEstimates,
   OperationalForecastItem
 } from '../services/predictionService';
 import { TransferResourceType } from '../types/database';
@@ -34,8 +35,8 @@ interface OperationalPredictionManagerProps {
 export const OperationalPredictionManager: React.FC<OperationalPredictionManagerProps> = ({
   filterHospitalId,
   isGovtAdmin = false,
-  title = "Operational Demand Predictions & Stockout Forecasting",
-  subtitle = "Deterministic baseline forecasting calculated directly from live Supabase hospital inventory and historical demand logs."
+  title = "Illustrative Resource Estimates",
+  subtitle = "Illustrative baseline estimates from Supabase-visible inventory and synthetic request records. Assumptions are simplified and are not trained or validated forecasts."
 }) => {
   const [forecasts, setForecasts] = useState<OperationalForecastItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -48,7 +49,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
   const [explaining, setExplaining] = useState<boolean>(false);
   const [explanationText, setExplanationText] = useState<string | null>(null);
 
-  const fetchRealForecasts = async (isManualRecalc = false) => {
+  const fetchBaselineEstimates = async (isManualRecalc = false) => {
     if (isManualRecalc) {
       setRecalculating(true);
     } else {
@@ -57,11 +58,13 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
     setError(null);
 
     try {
-      const data = await generateAndStoreRealForecasts(filterHospitalId);
+      const data = isManualRecalc
+        ? await recalculateOperationalBaselineEstimates(filterHospitalId)
+        : await generateOperationalBaselineEstimates(filterHospitalId);
       setForecasts(data);
     } catch (err: any) {
-      console.error('Fetch real forecasts error:', err);
-      setError('Failed to calculate live demand predictions from Supabase inventory.');
+      console.error('Fetch baseline estimates error:', err);
+      setError(err?.message || 'Failed to calculate baseline estimates from Supabase inventory.');
     } finally {
       setLoading(false);
       setRecalculating(false);
@@ -69,19 +72,14 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
   };
 
   useEffect(() => {
-    fetchRealForecasts();
+    fetchBaselineEstimates();
 
     const unsubscribe = subscribeToSupabaseRealtime(
       [
-        'prediction_history',
         'icu_inventory',
-        'general_bed_inventory',
-        'oxygen_inventory',
-        'medicine_inventory',
-        'blood_inventory',
-        'patient_requests'
+        'general_bed_inventory'
       ],
-      () => fetchRealForecasts()
+      () => fetchBaselineEstimates()
     );
 
     return () => unsubscribe();
@@ -102,7 +100,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
           currentQuantity: item.current_quantity,
           predictedDemand24h: item.predicted_demand_24h,
           predictedDemand7d: item.predicted_demand_7d,
-          confidenceScore: item.confidence_score,
+          confidenceScore: null,
           shortageRisk: item.shortage_risk,
           modelVersion: item.prediction_model,
           lastCalculated: new Date(item.last_calculated).toLocaleString()
@@ -114,12 +112,12 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
         setExplanationText(data.explanation);
       } else {
         setExplanationText(
-          `Operational Forecast Summary for ${item.hospital_name}: Current stock is ${item.current_quantity} unit(s) vs 24-hour predicted demand of ${item.predicted_demand_24h} unit(s) (${item.shortage_risk} Risk Level, ${item.confidence_score}% Confidence).\n\n*Note: Operational baseline forecast for decision support. Not clinically validated.*`
+          `Illustrative baseline for ${item.hospital_name}: current recorded stock is ${item.current_quantity} unit(s) against a simplified 24-hour estimate of ${item.predicted_demand_24h} unit(s) (${item.shortage_risk} scenario flag). No validated model or confidence score is available.\n\n*Prototype estimate only; not operational guidance.*`
         );
       }
     } catch (err: any) {
       setExplanationText(
-        `Analysis for ${item.hospital_name}: Available ${item.resource_type} is ${item.current_quantity} units against a 24h demand projection of ${item.predicted_demand_24h} units (${item.shortage_risk} Risk).\n\n*Note: Operational baseline forecast for decision support. Not clinically validated.*`
+        `Illustrative baseline for ${item.hospital_name}: recorded ${item.resource_type} stock is ${item.current_quantity} unit(s) against a simplified 24-hour estimate of ${item.predicted_demand_24h} unit(s) (${item.shortage_risk} scenario flag). No validated model or confidence score is available.\n\n*Prototype estimate only; not operational guidance.*`
       );
     } finally {
       setExplaining(false);
@@ -154,10 +152,10 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
             <TrendingUp className="w-5 h-5 text-purple-400" />
             <h2 className="text-lg font-black text-white">{title}</h2>
             <span className="bg-purple-950 text-purple-300 border border-purple-800 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold">
-              Operational Baseline Forecast
+              Saved synthetic estimate
             </span>
             <span className="bg-amber-950/80 text-amber-300 border border-amber-800 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold">
-              Not Clinically Validated
+              Not Operationally Validated
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">{subtitle}</p>
@@ -165,19 +163,19 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
 
         <div className="flex items-center gap-2 self-start md:self-auto">
           <button
-            onClick={() => fetchRealForecasts(true)}
+            onClick={() => fetchBaselineEstimates(true)}
             disabled={recalculating || loading}
             className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white border border-purple-500 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-purple-950/50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${recalculating ? 'animate-spin' : ''}`} />
-            <span>{recalculating ? 'Recalculating...' : 'Recalculate Forecasts'}</span>
+            <span>{recalculating ? 'Recalculating...' : 'Recalculate & Save'}</span>
           </button>
         </div>
       </div>
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-        {(['ALL', 'ICU Beds', 'General Beds', 'Oxygen', 'Medicine', 'Blood'] as const).map((tab) => (
+        {(['ALL', 'ICU Beds', 'General Beds'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -194,15 +192,15 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
 
       {/* Main Content */}
       {loading ? (
-        <LoadingState message="Calculating operational demand forecasts from Supabase inventory..." />
+        <LoadingState message="Calculating illustrative estimates from Supabase-visible records..." />
       ) : error ? (
-        <ErrorState message={error} onRetry={() => fetchRealForecasts()} />
+        <ErrorState message={error} onRetry={() => fetchBaselineEstimates()} />
       ) : filteredForecasts.length === 0 ? (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-8 text-center space-y-2">
           <BrainCircuit className="w-8 h-8 text-slate-600 mx-auto" />
-          <h3 className="text-sm font-bold text-white">No Inventory Data for Forecast Calculation</h3>
+          <h3 className="text-sm font-bold text-white">No eligible bed estimate data</h3>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Add or update bed, oxygen, or medicine inventories to generate deterministic stockout predictions.
+            An estimate requires current bed inventory and at least one clinician-confirmed synthetic request for this facility in the past 30 days. Oxygen, medicine, and blood are omitted because this workflow lacks comparable unit-level demand history.
           </p>
         </div>
       ) : (
@@ -229,7 +227,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
                     </div>
 
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRiskBadge(item.shortage_risk)}`}>
-                      {item.shortage_risk} Risk
+                      {item.shortage_risk} · 7-day scenario
                     </span>
                   </div>
 
@@ -265,20 +263,14 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
                     )}
                   </div>
 
-                  {/* Confidence Bar & Model Info */}
+                  {/* Forecast validation and method */}
                   <div className="space-y-1 bg-slate-900/50 p-2.5 rounded-xl border border-slate-800/50 text-[11px]">
                     <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-400">Data Confidence Score</span>
-                      <span className="font-mono font-bold text-sky-300">{item.confidence_score.toFixed(1)}%</span>
-                    </div>
-                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-sky-500 h-1.5 rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, item.confidence_score)}%` }}
-                      />
+                      <span className="text-slate-400">Forecast validation</span>
+                      <span className="font-mono font-bold text-amber-300">Not validated</span>
                     </div>
                     <div className="flex justify-between items-center text-[9px] text-slate-500 pt-1 font-mono">
-                      <span>Model: {item.prediction_model}</span>
+                      <span>Method: confirmed synthetic requests / 30d ({item.observed_scenarios_30d} observed)</span>
                       <span>Calc: {new Date(item.last_calculated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                   </div>
@@ -291,7 +283,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
                     className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-purple-300 hover:text-purple-200 border border-purple-900/60 hover:border-purple-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                    <span>Explain Forecast with Gemini AI</span>
+                    <span>Explain Estimate with Gemini AI</span>
                   </button>
                 </div>
               </div>
@@ -308,7 +300,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-purple-400" />
                 <h3 className="font-bold text-white text-sm">
-                  Gemini Forecast Analysis: {selectedForecast.resource_type}
+                  Demonstration Forecast: {selectedForecast.resource_type}
                 </h3>
               </div>
               <button
@@ -334,7 +326,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
               <div className="py-8 text-center space-y-2">
                 <RefreshCw className="w-6 h-6 text-purple-400 animate-spin mx-auto" />
                 <p className="text-xs text-slate-300 font-bold">
-                  Gemini 3.6 Flash analyzing database forecast values...
+                  Generating an explanation from the demonstration forecast...
                 </p>
                 <p className="text-[10px] text-slate-500">Evaluating stock ratios without altering database quantities.</p>
               </div>
@@ -345,7 +337,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
                 </div>
 
                 <p className="text-[10px] text-slate-500 italic text-center">
-                  Demonstration forecast for operational decision support. Not clinically validated.
+                  Illustrative request-rate estimate only. Not operationally validated or suitable for resource decisions.
                 </p>
               </div>
             )}

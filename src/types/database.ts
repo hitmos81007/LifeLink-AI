@@ -58,6 +58,10 @@ export type NotificationPriority =
   | 'High' 
   | 'Critical';
 
+export type RiskAlertLevel = 'informational' | 'warning' | 'critical';
+export type RiskAlertStatus = 'open' | 'acknowledged' | 'resolved' | 'dismissed';
+export type RiskAlertResourceType = 'Blood' | 'Oxygen' | 'Medicine' | 'ICU Beds' | 'General Beds';
+
 export type TransferResourceType = 
   | 'ICU Beds'
   | 'General Beds'
@@ -69,6 +73,8 @@ export type HospitalStatus =
   | 'Active' 
   | 'Inactive' 
   | 'Maintenance';
+
+export type AccountStatus = 'pending' | 'active' | 'suspended' | 'revoked';
 
 export type HospitalType = 
   | 'Government' 
@@ -110,7 +116,8 @@ export type PredictionModel =
   | 'LSTM' 
   | 'XGBoost' 
   | 'RandomForest' 
-  | 'Prophet';
+  | 'Prophet'
+  | 'SyntheticRequestRate';
 
 
 // -----------------------------------------------------
@@ -131,6 +138,7 @@ export interface HospitalTable {
   hospital_type: HospitalType;
   trauma_center: boolean;
   status: HospitalStatus;
+  verification_status?: AccountStatus;
   created_at: string;
   updated_at: string;
 }
@@ -147,6 +155,7 @@ export interface BloodBankTable {
   phone: string | null;
   email: string | null;
   status: HospitalStatus;
+  verification_status?: AccountStatus;
   created_at: string;
   updated_at: string;
 }
@@ -160,6 +169,7 @@ export interface AmbulanceProviderTable {
   phone: string | null;
   email: string | null;
   status: HospitalStatus;
+  verification_status?: AccountStatus;
   created_at: string;
   updated_at: string;
 }
@@ -174,6 +184,7 @@ export interface UserTable {
   blood_bank_id: string | null; // FK -> blood_banks.blood_bank_id
   ambulance_provider_id: string | null; // FK -> ambulance_providers.provider_id
   status: boolean;
+  account_status?: AccountStatus;
   created_at: string;
   updated_at: string;
 }
@@ -213,6 +224,7 @@ export interface ICUInventoryTable {
   occupied_icu_beds: number;
   reserved_icu_beds: number;
   available_icu_beds: number;
+  minimum_icu_beds: number;
   created_at: string;
   updated_at: string;
 }
@@ -224,6 +236,7 @@ export interface GeneralBedInventoryTable {
   occupied_beds: number;
   reserved_beds: number;
   available_beds: number;
+  minimum_beds: number;
   created_at: string;
   updated_at: string;
 }
@@ -248,6 +261,7 @@ export interface MedicineInventoryTable {
   dosage: string;
   manufacturer: string | null;
   current_stock: number;
+  reserved_stock?: number;
   minimum_stock: number;
   unit: string;
   expiry_date: string | null;
@@ -271,6 +285,7 @@ export interface PatientRequestTable {
   longitude: number | null;
   status: RequestStatus;
   notes: string | null;
+  data_origin?: 'synthetic' | 'unknown';
   created_at: string;
   updated_at: string;
 }
@@ -323,13 +338,17 @@ export interface AIRecommendationTable {
   hospital_id: string; // FK -> hospitals.hospital_id
   blood_bank_id: string | null; // FK -> blood_banks.blood_bank_id
   ambulance_id: string | null; // FK -> ambulances.ambulance_id
-  distance_km: number;
-  eta_minutes: number;
+  distance_km: number | null;
+  eta_minutes: number | null;
   confidence_score: number;
   recommendation_reason: string;
   accepted: boolean;
   created_at: string;
   updated_at: string;
+  method_version: string | null;
+  config_version: string | null;
+  score_factors: Record<string, unknown> | null;
+  evidence_snapshot: Record<string, unknown> | null;
 }
 
 export interface PredictionHistoryTable {
@@ -338,11 +357,15 @@ export interface PredictionHistoryTable {
   resource_type: TransferResourceType;
   current_quantity: number;
   predicted_demand: number;
-  confidence_score: number;
+  confidence_score: number | null;
   prediction_model: PredictionModel;
   prediction_date: string;
   created_at: string;
   updated_at: string;
+  forecast_run_id: string | null;
+  forecast_horizon_days: 1 | 7 | null;
+  method_version: string | null;
+  input_snapshot: Record<string, unknown> | null;
 }
 
 export interface ResourceTransferTable {
@@ -352,6 +375,10 @@ export interface ResourceTransferTable {
   resource_type: TransferResourceType;
   resource_name: string | null;
   quantity: number;
+  approved_quantity?: number | null;
+  requested_by?: string | null;
+  idempotency_key?: string | null;
+  source_inventory_id?: string | null;
   status: TransferStatus;
   approved_by: string | null; // FK -> users.user_id
   remarks: string | null;
@@ -367,8 +394,49 @@ export interface NotificationTable {
   message: string;
   priority: NotificationPriority;
   is_read: boolean;
+  entity_type?: 'patient_request' | 'emergency_case' | 'resource_transfer' | 'blood_inventory' | 'oxygen_inventory' | 'medicine_inventory' | null;
+  entity_id?: string | null;
+  dedupe_key?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RiskAlertTable {
+  alert_id: string;
+  hospital_id: string | null;
+  blood_bank_id: string | null;
+  facility_name: string;
+  resource_type: RiskAlertResourceType;
+  resource_id: string;
+  resource_name: string;
+  risk_level: RiskAlertLevel;
+  reason_code: string;
+  status: RiskAlertStatus;
+  observed_value: number;
+  threshold_value: number;
+  predicted_value: number | null;
+  forecast_horizon_days: 1 | 7 | null;
+  reason: string;
+  recommended_action: string;
+  dedupe_key: string;
+  first_detected_at: string;
+  last_detected_at: string;
+  acknowledged_by: string | null;
+  acknowledged_at: string | null;
+  resolution_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertEventTable {
+  event_id: string;
+  alert_id: string;
+  action: 'opened' | 'refreshed' | 'acknowledged' | 'resolved' | 'dismissed' | 'auto_resolved' | 'reopened';
+  actor_id: string | null;
+  note: string | null;
+  occurred_at: string;
 }
 
 export interface AuditLogTable {

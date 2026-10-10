@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   Stethoscope,
@@ -31,43 +31,61 @@ import {
 import {
   approveAndAllocateEmergencyRequest,
   rejectEmergencyRequest,
-  getFacilityNetwork,
-  ClinicalFacilityNetwork
+  getClinicalReviewNetwork,
+  ClinicalReviewNetwork
 } from '../../services/clinicalApprovalService';
 import {
   PatientRequestTable,
   AIRecommendationTable,
-  SeverityLevel,
-  HospitalTable,
-  BloodBankTable,
-  AmbulanceTable
+  SeverityLevel
 } from '../../types/database';
 import { subscribeToSupabaseRealtime } from '../../services/supabaseDataLayer';
 import { LoadingState, ErrorState, EmptyState } from '../common/EmptyState';
 import { hasCapability, getRoleDisplayLabel } from '../../types/roles';
 import { LeafletEmergencyMap, MapEntity } from '../common/LeafletEmergencyMap';
+import { IncidentPlanningPanel } from '../mci/IncidentPlanningPanel';
+import { getResourceFreshness } from '../../services/resourceFreshness';
+
+function isFacilityCompatibleWithRequest(
+  hospital: ClinicalReviewNetwork['hospitals'][number],
+  request: PatientRequestTable
+): boolean {
+  if (request.needs_icu && (hospital.available_icu_beds < 1
+    || getResourceFreshness(hospital.icu_updated_at ?? null, 'icu') !== 'Fresh')) return false;
+  if (request.needs_general_bed && (hospital.available_beds < 1
+    || getResourceFreshness(hospital.beds_updated_at ?? null, 'beds') !== 'Fresh')) return false;
+  if (request.needs_oxygen && (hospital.available_oxygen_records <= 0
+    || getResourceFreshness(hospital.oxygen_updated_at ?? null, 'oxygen') !== 'Fresh')) return false;
+  return true;
+}
 
 export const ClinicianReviewDashboard: React.FC = () => {
   const { userProfile } = useAuth();
   const [requests, setRequests] = useState<PatientRequestTable[]>([]);
   const [recommendationsMap, setRecommendationsMap] = useState<Record<string, AIRecommendationTable[]>>({});
-  const [facilityNetwork, setFacilityNetwork] = useState<ClinicalFacilityNetwork | null>(null);
+  const [facilityNetwork, setFacilityNetwork] = useState<ClinicalReviewNetwork | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [networkError, setNetworkError] = useState<string | null>(null);
+  const [recommendationErrorsMap, setRecommendationErrorsMap] = useState<Record<string, string>>({});
+  const [unverifiedLegacyRequestCount, setUnverifiedLegacyRequestCount] = useState(0);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [refreshingRecommendationId, setRefreshingRecommendationId] = useState<string | null>(null);
 
   // Review Form States for each pending request
   const [selectedUrgencyMap, setSelectedUrgencyMap] = useState<Record<string, SeverityLevel>>({});
   const [selectedHospitalMap, setSelectedHospitalMap] = useState<Record<string, string>>({});
   const [selectedAmbulanceMap, setSelectedAmbulanceMap] = useState<Record<string, string>>({});
   const [selectedBloodBankMap, setSelectedBloodBankMap] = useState<Record<string, string>>({});
-  const [clinicianNotesMap, setClinicianNotesMap] = useState<Record<string, string>>({});
 
   // Active Map inspection
   const [inspectedRequestId, setInspectedRequestId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'allocated'>('pending');
+  const recommendationGenerationsInFlight = useRef(new Map<string, Promise<AIRecommendationTable[]>>());
+  const fetchSequence = useRef(0);
+  const fetchDataRef = useRef<() => Promise<void>>(async () => {});
 
   const triggerToast = (msg: string) => {
     setActionSuccess(msg);
@@ -76,99 +94,159 @@ export const ClinicianReviewDashboard: React.FC = () => {
 
   const isAuthorized = hasCapability(userProfile?.role, 'review_clinical_case') || userProfile?.role === 'clinician_reviewer';
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
+  const loadRecommendationsOnce = async (request: PatientRequestTable, forceRefresh = false): Promise<AIRecommendationTable[]> => {
+    const pending = recommendationGenerationsInFlight.current.get(request.request_id);
+    if (pending) return pending;
+    const load = (async () => {
+      if (forceRefresh) return generateRecommendationsForRequest(request);
+      const saved = await getRecommendationsForRequest(request.request_id);
+      return saved.length > 0 ? saved : generateRecommendationsForRequest(request);
+    })();
+    recommendationGenerationsInFlight.current.set(request.request_id, load);
     try {
-      const [reqData, netData] = await Promise.all([
-        getPatientRequests(),
-        getFacilityNetwork()
-      ]);
-
-      setRequests(reqData);
-      setFacilityNetwork(netData);
-
-      // Generate or fetch AI recommendations for pending requests
-      const recMap: Record<string, AIRecommendationTable[]> = {};
-      const urgMap: Record<string, SeverityLevel> = {};
-      const hospMap: Record<string, string> = {};
-      const ambMap: Record<string, string> = {};
-      const bbMap: Record<string, string> = {};
-
-      for (const req of reqData) {
-        let recs = await getRecommendationsForRequest(req.request_id);
-        if (recs.length === 0 && (req.status === 'Pending' || req.status === 'Recommended')) {
-          try {
-            recs = await generateRecommendationsForRequest(req);
-          } catch {}
-        }
-        recMap[req.request_id] = recs;
-
-        // Default review form selections
-        urgMap[req.request_id] = (req.reported_severity || req.severity || 'Critical') as SeverityLevel;
-        if (recs.length > 0) {
-          hospMap[req.request_id] = recs[0].hospital_id;
-          if (recs[0].ambulance_id) ambMap[req.request_id] = recs[0].ambulance_id;
-          if (recs[0].blood_bank_id) bbMap[req.request_id] = recs[0].blood_bank_id;
-        } else if (netData.hospitals.length > 0) {
-          hospMap[req.request_id] = netData.hospitals[0].hospital_id;
-        }
-      }
-
-      setRecommendationsMap(recMap);
-      setSelectedUrgencyMap(urgMap);
-      setSelectedHospitalMap(hospMap);
-      setSelectedAmbulanceMap(ambMap);
-      setSelectedBloodBankMap(bbMap);
-
-      if (reqData.length > 0 && !inspectedRequestId) {
-        setInspectedRequestId(reqData[0].request_id);
-      }
-    } catch (err: any) {
-      console.error('ClinicianReviewDashboard load error:', err);
-      setError(err?.message || 'Failed to load emergency requests from database.');
+      return await load;
     } finally {
-      setLoading(false);
+      if (recommendationGenerationsInFlight.current.get(request.request_id) === load) {
+        recommendationGenerationsInFlight.current.delete(request.request_id);
+      }
     }
   };
 
+  const fetchData = async () => {
+    const sequence = ++fetchSequence.current;
+    setLoading(true);
+    setError(null);
+    setNetworkError(null);
+    const [requestsResult, networkResult] = await Promise.allSettled([
+      getPatientRequests(),
+      getClinicalReviewNetwork()
+    ]);
+    if (sequence !== fetchSequence.current) return;
+
+    let prototypeRequests: PatientRequestTable[] = [];
+    let netData: ClinicalReviewNetwork | null = null;
+    let requestToInspect: PatientRequestTable | null = null;
+    if (requestsResult.status === 'fulfilled') {
+      const allRequests = requestsResult.value;
+      prototypeRequests = allRequests.filter((request) => request.data_origin === 'synthetic');
+      setUnverifiedLegacyRequestCount(allRequests.length - prototypeRequests.length);
+      setRequests(prototypeRequests);
+      requestToInspect = prototypeRequests.find((request) => request.request_id === inspectedRequestId)
+        || prototypeRequests.find((request) => request.status === 'Pending' || request.status === 'Recommended')
+        || prototypeRequests[0]
+        || null;
+      if (requestToInspect && requestToInspect.request_id !== inspectedRequestId) {
+        setInspectedRequestId(requestToInspect.request_id);
+      }
+    } else {
+      setRequests([]);
+      setUnverifiedLegacyRequestCount(0);
+      setError(requestsResult.reason?.message || 'Failed to load synthetic requests from Supabase.');
+    }
+
+    if (networkResult.status === 'fulfilled') {
+      netData = networkResult.value;
+      setFacilityNetwork(netData);
+    } else {
+      setFacilityNetwork(null);
+      setNetworkError(networkResult.reason?.message || 'Facility and inventory candidates are unavailable.');
+    }
+
+    const recMap: Record<string, AIRecommendationTable[]> = {};
+    const recommendationErrors: Record<string, string> = {};
+    if (requestToInspect) {
+      try {
+        const recs = await loadRecommendationsOnce(requestToInspect);
+        if (recs.length > 0 || requestToInspect.status === 'Pending' || requestToInspect.status === 'Recommended') {
+          recMap[requestToInspect.request_id] = recs;
+        }
+      } catch (err: any) {
+        recommendationErrors[requestToInspect.request_id] = err?.message || 'Advisory suggestions are unavailable.';
+      }
+    }
+    if (sequence !== fetchSequence.current) return;
+    setRecommendationsMap(recMap);
+    setRecommendationErrorsMap(recommendationErrors);
+
+    const hospMap: Record<string, string> = {};
+    const ambMap: Record<string, string> = {};
+    const bbMap: Record<string, string> = {};
+    if (netData) {
+      const availableAmbulances = netData.ambulances.filter((ambulance) =>
+        ambulance.status === 'Available' && getResourceFreshness(ambulance.updated_at ?? null, 'ambulance') === 'Fresh'
+      );
+      prototypeRequests.forEach((req) => {
+        const compatibleHospitals = netData!.hospitals.filter((hospital) => isFacilityCompatibleWithRequest(hospital, req));
+        const recommendedHospitalId = recMap[req.request_id]?.[0]?.hospital_id;
+        const selectedHospital = compatibleHospitals.find((hospital) => hospital.hospital_id === recommendedHospitalId)
+          || null;
+        if (selectedHospital) hospMap[req.request_id] = selectedHospital.hospital_id;
+
+        const compatibleBloodBanks = netData!.bloodBanks.filter((bank) => req.required_blood_group
+          ? getResourceFreshness(bank.blood_updated_at?.[req.required_blood_group] ?? null, 'blood') === 'Fresh'
+            && Number(bank.blood_stock[req.required_blood_group] || 0) > Number(bank.blood_thresholds[req.required_blood_group] || 0)
+          : Object.entries(bank.blood_stock).some(([group, units]) =>
+              getResourceFreshness(bank.blood_updated_at?.[group] ?? null, 'blood') === 'Fresh'
+              && Number(units) > Number(bank.blood_thresholds[group] || 0)));
+        const recommendedBloodBankId = recMap[req.request_id]?.[0]?.blood_bank_id;
+        const selectedBloodBank = compatibleBloodBanks.find((bank) => bank.blood_bank_id === recommendedBloodBankId)
+          || null;
+        if (selectedBloodBank) bbMap[req.request_id] = selectedBloodBank.blood_bank_id;
+
+        const recommendedAmbulanceId = recMap[req.request_id]?.[0]?.ambulance_id;
+        const selectedAmbulance = availableAmbulances.find((ambulance) => ambulance.ambulance_id === recommendedAmbulanceId)
+          || null;
+        if (selectedAmbulance) ambMap[req.request_id] = selectedAmbulance.ambulance_id;
+      });
+    }
+    setSelectedHospitalMap(hospMap);
+    setSelectedAmbulanceMap(ambMap);
+    setSelectedBloodBankMap(bbMap);
+    setLoading(false);
+  };
+
+  fetchDataRef.current = fetchData;
+
   useEffect(() => {
-    fetchData();
+    void fetchDataRef.current();
 
     const unsubscribe = subscribeToSupabaseRealtime(
       ['patient_requests', 'emergency_cases', 'ai_recommendations'],
-      () => fetchData()
+      () => void fetchDataRef.current()
     );
 
-    return () => unsubscribe();
+    return () => {
+      fetchSequence.current += 1;
+      unsubscribe();
+    };
   }, [userProfile?.user_id]);
 
   // Handle Clinician Approval Action
   const handleApproveCase = async (req: PatientRequestTable) => {
     setProcessingId(req.request_id);
     try {
-      const urgency = selectedUrgencyMap[req.request_id] || (req.reported_severity || req.severity || 'Critical');
-      const hospitalId = selectedHospitalMap[req.request_id] || (facilityNetwork?.hospitals[0]?.hospital_id || 'hosp-01');
-      const ambulanceId = selectedAmbulanceMap[req.request_id] || (facilityNetwork?.ambulances[0]?.ambulance_id || null);
-      const bloodBankId = selectedBloodBankMap[req.request_id] || (facilityNetwork?.bloodBanks[0]?.blood_bank_id || null);
-      const notes = clinicianNotesMap[req.request_id] || '';
-
+      if (!userProfile?.user_id) throw new Error('A signed-in clinician reviewer is required.');
+      const urgency = selectedUrgencyMap[req.request_id];
+      const hospitalId = selectedHospitalMap[req.request_id];
+      const ambulanceId = selectedAmbulanceMap[req.request_id] || null;
+      const bloodBankId = selectedBloodBankMap[req.request_id] || null;
+      if (!urgency) throw new Error('Select the urgency you confirmed as the clinician reviewer.');
+      if (!hospitalId) throw new Error('Select a destination hospital before approving this request.');
+      if (req.needs_ambulance && !ambulanceId) throw new Error('Select an ambulance before approving this request.');
+      if (req.needs_blood && !bloodBankId) throw new Error('Select a blood bank before approving this request.');
       const res = await approveAndAllocateEmergencyRequest({
         requestId: req.request_id,
-        clinicianId: userProfile?.user_id || 'clinician_demo_id',
-        clinicianName: userProfile?.full_name || 'Dr. Ananya Verma',
         confirmedUrgency: urgency,
         selectedHospitalId: hospitalId,
         selectedAmbulanceId: req.needs_ambulance ? ambulanceId : null,
-        selectedBloodBankId: req.needs_blood ? bloodBankId : null,
-        clinicalNotes: notes
+        selectedBloodBankId: req.needs_blood ? bloodBankId : null
       });
 
       if (!res.success) {
         throw new Error(res.error || 'Failed to confirm approval');
       }
 
-      triggerToast(`Emergency request approved! Urgency confirmed as ${urgency}. Matched facility & resources allocated.`);
+      triggerToast(`Prototype review saved. No emergency dispatch occurred; blood units are not reserved by this workflow.`);
       await fetchData();
     } catch (err: any) {
       alert('Approval error: ' + err.message);
@@ -179,17 +257,12 @@ export const ClinicianReviewDashboard: React.FC = () => {
 
   // Handle Clinician Rejection Action
   const handleRejectCase = async (req: PatientRequestTable) => {
-    const reason = prompt('Please enter clinical reason for rejection / closure:', 'Duplicate report / non-emergency situational assessment');
-    if (!reason) return;
+    if (!window.confirm('Close this synthetic prototype scenario after human review?')) return;
 
     setProcessingId(req.request_id);
     try {
-      await rejectEmergencyRequest(
-        req.request_id,
-        userProfile?.full_name || 'Clinician Reviewer',
-        reason
-      );
-      triggerToast('Request closed with clinical review notes.');
+      await rejectEmergencyRequest(req.request_id, 'Invalid synthetic scenario');
+      triggerToast('Synthetic scenario closed after human review.');
       await fetchData();
     } catch (err: any) {
       alert('Rejection error: ' + err.message);
@@ -198,34 +271,82 @@ export const ClinicianReviewDashboard: React.FC = () => {
     }
   };
 
+  const handleRefreshRecommendations = async (req: PatientRequestTable) => {
+    if (req.status !== 'Pending' && req.status !== 'Recommended') return;
+    setRefreshingRecommendationId(req.request_id);
+    try {
+      const recs = await loadRecommendationsOnce(req, true);
+      setRecommendationsMap((current) => ({ ...current, [req.request_id]: recs }));
+      setRecommendationErrorsMap((current) => {
+        const next = { ...current };
+        delete next[req.request_id];
+        return next;
+      });
+      try {
+        const network = await getClinicalReviewNetwork();
+        setFacilityNetwork(network);
+        setNetworkError(null);
+      } catch (networkErr: any) {
+        setNetworkError(networkErr?.message || 'Recommendation evidence refreshed, but the facility display could not be refreshed.');
+      }
+      triggerToast(recs.length
+        ? 'Recommendation evidence refreshed from current Supabase inventory. Review the updated candidates before deciding.'
+        : 'Recommendation check completed. No compatible facility matches the current inventory.');
+    } catch (err: any) {
+      setRecommendationErrorsMap((current) => ({
+        ...current,
+        [req.request_id]: err?.message || 'Could not refresh the advisory suggestions.'
+      }));
+    } finally {
+      setRefreshingRecommendationId(null);
+    }
+  };
+
+  const handleInspectRequest = async (req: PatientRequestTable) => {
+    setInspectedRequestId(req.request_id);
+    if (req.status !== 'Pending' && req.status !== 'Recommended') return;
+    if (Object.prototype.hasOwnProperty.call(recommendationsMap, req.request_id)) return;
+    setRefreshingRecommendationId(req.request_id);
+    try {
+      const recs = await loadRecommendationsOnce(req);
+      setRecommendationsMap((current) => ({ ...current, [req.request_id]: recs }));
+      setRecommendationErrorsMap((current) => {
+        const next = { ...current };
+        delete next[req.request_id];
+        return next;
+      });
+    } catch (err: any) {
+      setRecommendationErrorsMap((current) => ({
+        ...current,
+        [req.request_id]: err?.message || 'Advisory suggestions are unavailable.'
+      }));
+    } finally {
+      setRefreshingRecommendationId((current) => current === req.request_id ? null : current);
+    }
+  };
+
   const pendingRequests = requests.filter(r => r.status === 'Pending' || r.status === 'Recommended');
   const allocatedRequests = requests.filter(r => r.status === 'Assigned' || r.status === 'Completed');
 
   const inspectedRequest = requests.find(r => r.request_id === inspectedRequestId) || requests[0];
   const inspectedRecs = inspectedRequest ? recommendationsMap[inspectedRequest.request_id] || [] : [];
+  const hospitalsForRequest = (req: PatientRequestTable) => (facilityNetwork?.hospitals || [])
+    .filter((hospital) => isFacilityCompatibleWithRequest(hospital, req));
+  const bloodBanksForRequest = (req: PatientRequestTable) => (facilityNetwork?.bloodBanks || [])
+    .filter((bank) => req.required_blood_group
+      ? getResourceFreshness(bank.blood_updated_at?.[req.required_blood_group] ?? null, 'blood') === 'Fresh'
+        && Number(bank.blood_stock[req.required_blood_group] || 0) > Number(bank.blood_thresholds[req.required_blood_group] || 0)
+      : Object.entries(bank.blood_stock).some(([group, units]) =>
+          getResourceFreshness(bank.blood_updated_at?.[group] ?? null, 'blood') === 'Fresh'
+          && Number(units) > Number(bank.blood_thresholds[group] || 0)));
+  const availableAmbulances = (facilityNetwork?.ambulances || []).filter((ambulance) =>
+    ambulance.status === 'Available' && getResourceFreshness(ambulance.updated_at ?? null, 'ambulance') === 'Fresh'
+  );
 
   // Build Leaflet entities for the currently inspected request
   const mapEntities: MapEntity[] = [];
   if (facilityNetwork) {
     mapEntities.push(...facilityNetwork.mapEntities);
-  }
-
-  if (inspectedRequest) {
-    mapEntities.push({
-      id: inspectedRequest.request_id,
-      name: `Patient Scene (${inspectedRequest.emergency_type})`,
-      type: 'patient',
-      location: {
-        lat: inspectedRequest.latitude ?? 28.6139,
-        lng: inspectedRequest.longitude ?? 77.2090
-      },
-      address: `Incident Location: ${inspectedRequest.emergency_type}`,
-      phone: '+91-98765-91100',
-      details: {
-        status: `Self-Reported: ${inspectedRequest.reported_severity || inspectedRequest.severity}`,
-        etaMinutes: 0
-      }
-    });
   }
 
   const getUrgencyBadge = (sev: SeverityLevel) => {
@@ -268,13 +389,13 @@ export const ClinicianReviewDashboard: React.FC = () => {
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="bg-teal-950 text-teal-300 border border-teal-800 px-2.5 py-1 rounded-lg font-bold">
-              Authorized Clinician: {userProfile?.full_name || 'Dr. Ananya Verma'}
+              Authorized Reviewer: {userProfile?.full_name || 'Clinician Reviewer'}
             </span>
             <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg">
-              Pending Evaluation: <strong className="text-amber-400">{pendingRequests.length} Cases</strong>
+              Pending Synthetic Scenarios: <strong className="text-amber-400">{pendingRequests.length}</strong>
             </span>
             <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg">
-              Confirmed &amp; Allocated: <strong className="text-emerald-400">{allocatedRequests.length} Cases</strong>
+              Reviewed Scenarios: <strong className="text-emerald-400">{allocatedRequests.length}</strong>
             </span>
           </div>
         </div>
@@ -284,9 +405,23 @@ export const ClinicianReviewDashboard: React.FC = () => {
           className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl cursor-pointer transition-all flex items-center gap-1.5 text-xs font-bold self-start sm:self-auto"
         >
           <RefreshCw className="w-4 h-4" />
-          <span>Sync Real-Time Cases</span>
+          <span>Refresh Records</span>
         </button>
       </div>
+
+      {isAuthorized && <IncidentPlanningPanel mode="reviewer" />}
+
+      {unverifiedLegacyRequestCount > 0 && (
+        <div className="rounded-xl border border-amber-700/70 bg-amber-950/50 p-3 text-xs text-amber-100">
+          {unverifiedLegacyRequestCount} legacy request record(s) are hidden because their data origin is unknown. Review them in a controlled staging process before treating them as synthetic.
+        </div>
+      )}
+
+      {networkError && (
+        <div className="rounded-xl border border-amber-700/70 bg-amber-950/50 p-3 text-xs text-amber-100">
+          Facility availability could not be loaded: {networkError} The synthetic review queue remains available, but assignments require a fresh facility snapshot.
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-slate-800 pb-2">
@@ -311,7 +446,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
           }`}
         >
           <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-          <span>Confirmed &amp; Dispatched ({allocatedRequests.length})</span>
+          <span>Reviewed Scenarios ({allocatedRequests.length})</span>
         </button>
       </div>
 
@@ -322,7 +457,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
         <div className="lg:col-span-6 space-y-4">
           <div className="flex items-center justify-between text-xs font-bold text-slate-400">
             <span>{activeTab === 'pending' ? 'Pending Triage Queue' : 'Allocated Emergency History'}</span>
-            <span className="font-mono">Realtime Live Sync</span>
+            <span className="font-mono">Supabase-visible prototype records</span>
           </div>
 
           {loading ? (
@@ -332,8 +467,8 @@ export const ClinicianReviewDashboard: React.FC = () => {
           ) : (activeTab === 'pending' ? pendingRequests : allocatedRequests).length === 0 ? (
             <EmptyState
               icon={Stethoscope}
-              title={activeTab === 'pending' ? 'No pending triage cases.' : 'No allocated cases yet.'}
-              description={activeTab === 'pending' ? 'New patient requests will stream here live for medical urgency validation.' : 'Confirmed and hospital-allocated cases will appear here.'}
+              title={activeTab === 'pending' ? 'No synthetic scenarios awaiting review.' : 'No reviewed scenarios yet.'}
+              description={activeTab === 'pending' ? 'New synthetic scenarios saved by patient demo accounts will appear here.' : 'Human-reviewed prototype assignments will appear here.'}
             />
           ) : (
             <div className="space-y-4 max-h-[750px] overflow-y-auto pr-1">
@@ -347,7 +482,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
                 return (
                   <div
                     key={req.request_id}
-                    onClick={() => setInspectedRequestId(req.request_id)}
+                    onClick={() => handleInspectRequest(req)}
                     className={`bg-slate-900 border rounded-2xl p-5 space-y-4 transition-all cursor-pointer ${
                       isSelected
                         ? 'border-teal-500 shadow-xl shadow-teal-950/40 bg-slate-900/95'
@@ -386,11 +521,9 @@ export const ClinicianReviewDashboard: React.FC = () => {
                       {req.needs_blood && <span className="bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded font-bold">Blood ({req.required_blood_group})</span>}
                     </div>
 
-                    {req.notes && (
-                      <p className="text-xs text-slate-300 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                        <strong className="text-slate-400">Scene Notes:</strong> {req.notes}
-                      </p>
-                    )}
+                    <p className="text-[10px] text-slate-400">
+                      Synthetic prototype record • An optional coarse fictional area may be stored; no real patient location or free-text details are collected.
+                    </p>
 
                     {/* Interactive Review Action Form (Only for Pending) */}
                     {isPending && isSelected && (
@@ -405,6 +538,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
                           <label className="text-[11px] font-bold text-slate-300">
                             1. Clinician-Confirmed Urgency Level
                           </label>
+                          {!selectedUrgencyMap[req.request_id] && <p className="text-[10px] text-amber-300">Self-reported urgency is shown above. Choose the clinician-confirmed level to continue.</p>}
                           <div className="grid grid-cols-4 gap-2">
                             {(['Critical', 'High', 'Medium', 'Low'] as SeverityLevel[]).map((sev) => {
                               const active = selectedUrgencyMap[req.request_id] === sev;
@@ -436,69 +570,69 @@ export const ClinicianReviewDashboard: React.FC = () => {
                         {/* Facility Match Selector */}
                         <div className="space-y-1">
                           <label className="text-[11px] font-bold text-slate-300">
-                            2. Select Nearest Healthcare Facility
+                            2. Select Compatible Healthcare Facility
                           </label>
                           <select
                             value={selectedHospitalMap[req.request_id] || ''}
+                            disabled={hospitalsForRequest(req).length === 0}
                             onChange={(e) => {
                               e.stopPropagation();
                               setSelectedHospitalMap(m => ({ ...m, [req.request_id]: e.target.value }));
                             }}
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white font-bold"
                           >
-                            {facilityNetwork?.hospitals.map((h) => (
+                            <option value="">{hospitalsForRequest(req).length ? 'Select a compatible facility' : 'No compatible inventory recorded'}</option>
+                            {hospitalsForRequest(req).map((h) => (
                               <option key={h.hospital_id} value={h.hospital_id}>
-                                🏥 {h.hospital_name} ({h.available_icu_beds} ICU Beds • {h.available_beds} General Beds • {h.trauma_center ? 'Level 1 Trauma' : 'General'})
+                                🏥 {h.hospital_name} ({h.available_icu_beds} ICU • {h.available_beds} general • {h.available_oxygen_records} oxygen records above zero)
                               </option>
                             ))}
                           </select>
                         </div>
 
+                        {req.needs_oxygen && <p className="text-[11px] text-slate-400">Positive oxygen inventory records are checked at review. No oxygen amount is assigned or reserved.</p>}
+
+                        {req.needs_blood && <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-slate-300">Blood bank candidate · units are not reserved</label>
+                          <select value={selectedBloodBankMap[req.request_id] || ''} disabled={bloodBanksForRequest(req).length === 0} onChange={(e) => setSelectedBloodBankMap(m => ({ ...m, [req.request_id]: e.target.value }))} className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white font-bold">
+                            <option value="">{bloodBanksForRequest(req).length ? 'Select a bank with recorded stock' : `No recorded stock for ${req.required_blood_group || 'the requested group'}`}</option>
+                            {bloodBanksForRequest(req).map(bank => <option key={bank.blood_bank_id} value={bank.blood_bank_id}>{bank.blood_bank_name} · {req.required_blood_group ? `${bank.blood_stock[req.required_blood_group] || 0} recorded available ${req.required_blood_group} units` : 'stock above threshold'}</option>)}
+                          </select>
+                        </div>}
+
                         {/* Ambulance Selector if requested */}
                         {req.needs_ambulance && (
                           <div className="space-y-1">
                             <label className="text-[11px] font-bold text-slate-300">
-                              3. Assign Immediate Ambulance Unit
+                              3. Select Ambulance Candidate · No Dispatch
                             </label>
+                            <p className="text-[10px] text-amber-300">
+                              This synthetic request has no scene coordinates, so the system cannot rank nearby vehicles. Choose a unit only for this prototype review; no route or dispatch is created.
+                            </p>
                             <select
                               value={selectedAmbulanceMap[req.request_id] || ''}
+                              disabled={availableAmbulances.length === 0}
                               onChange={(e) => {
                                 e.stopPropagation();
                                 setSelectedAmbulanceMap(m => ({ ...m, [req.request_id]: e.target.value }));
                               }}
                               className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white font-bold"
                             >
-                              {facilityNetwork?.ambulances.map((a) => (
+                              <option value="">{availableAmbulances.length ? 'Select an available unit' : 'No available ambulance recorded'}</option>
+                              {availableAmbulances.map((a) => (
                                 <option key={a.ambulance_id} value={a.ambulance_id}>
-                                  🚑 Unit {a.vehicle_number} ({a.ambulance_type} • Driver: {a.driver_name} • Status: {a.status})
+                                  🚑 Unit {a.vehicle_number} ({a.ambulance_type} • Status: {a.status})
                                 </option>
                               ))}
                             </select>
                           </div>
                         )}
 
-                        {/* Notes input */}
-                        <div className="space-y-1">
-                          <label className="text-[11px] font-bold text-slate-300">
-                            Medical Directives / Dispatch Notes
-                          </label>
-                          <input
-                            type="text"
-                            value={clinicianNotesMap[req.request_id] || ''}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              setClinicianNotesMap(m => ({ ...m, [req.request_id]: e.target.value }));
-                            }}
-                            placeholder="e.g., Pre-alert trauma surgeon on duty, oxygen line ready on arrival"
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-                          />
-                        </div>
-
                         {/* Action Buttons */}
                         <div className="flex items-center gap-3 pt-2">
                           <button
                             type="button"
-                            disabled={processingId === req.request_id}
+                            disabled={processingId === req.request_id || !selectedUrgencyMap[req.request_id] || !selectedHospitalMap[req.request_id] || (req.needs_ambulance && !selectedAmbulanceMap[req.request_id]) || (req.needs_blood && !selectedBloodBankMap[req.request_id])}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleApproveCase(req);
@@ -506,7 +640,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
                             className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition-all active:scale-98"
                           >
                             <CheckCircle2 className="w-4 h-4" />
-                            <span>{processingId === req.request_id ? 'Confirming...' : 'Approve & Allocate Resources'}</span>
+                            <span>{processingId === req.request_id ? 'Saving...' : 'Record Prototype Assignment'}</span>
                           </button>
 
                           <button
@@ -537,38 +671,66 @@ export const ClinicianReviewDashboard: React.FC = () => {
               <div>
                 <h3 className="text-sm font-black text-white flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-teal-400" />
-                  <span>Real-Time GIS Spatial Triage Map</span>
+                  <span>Facility Network Map</span>
                 </h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Visualizing patient location, nearest trauma centers, and live ambulance routes
+                  Facility pins only. An optional coarse fictional scenario area informs straight-line matching; no patient pin, responder route, or live tracking is shown.
                 </p>
               </div>
               <span className="text-[10px] font-mono text-teal-400 bg-teal-950 px-2 py-0.5 rounded border border-teal-800 font-bold">
-                Leaflet OpenStreetMap
+                OpenStreetMap Basemap
               </span>
             </div>
 
             {/* Interactive Leaflet Map Component */}
-            <LeafletEmergencyMap
-              entities={mapEntities}
-              center={inspectedRequest?.latitude ? [inspectedRequest.latitude, inspectedRequest.longitude || 77.2090] : [28.6139, 77.2090]}
-              zoom={13}
-              height="380px"
-              activeRouteDestinationId={selectedHospitalMap[inspectedRequest?.request_id || ''] || inspectedRecs[0]?.hospital_id}
-            />
+            {mapEntities.length > 0 ? (
+              <LeafletEmergencyMap
+                entities={mapEntities}
+                center={[mapEntities[0].location.lat, mapEntities[0].location.lng]}
+                zoom={10}
+                height="380px"
+              />
+            ) : (
+              <div className="h-[380px] rounded-xl border border-slate-800 bg-slate-950 flex items-center justify-center p-6 text-center text-xs text-slate-400">
+                Facility coordinates are not available for the current review network, so the map is hidden.
+              </div>
+            )}
 
-            {/* AI Recommendation Facility Comparison */}
+            {/* Rule-based candidate comparison */}
             {inspectedRequest && (
               <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-300">
                   <span className="flex items-center gap-1.5 text-blue-400">
-                    <Sparkles className="w-4 h-4" /> AI Compatibility Match Scores ({inspectedRecs.length})
+                    <Sparkles className="w-4 h-4" /> Rule-based fit scores ({inspectedRecs.length})
                   </span>
-                  <span className="text-[10px] font-mono text-slate-400">Grounded in Supabase Real-Time Inventory</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono text-slate-400">Heuristic only • not a probability or clinical score</span>
+                    {(inspectedRequest.status === 'Pending' || inspectedRequest.status === 'Recommended') && (
+                      <button
+                        type="button"
+                        onClick={() => handleRefreshRecommendations(inspectedRequest)}
+                        disabled={refreshingRecommendationId === inspectedRequest.request_id}
+                        className="inline-flex items-center gap-1 rounded-lg border border-blue-800 bg-blue-950/70 px-2 py-1 text-[10px] font-bold text-blue-200 hover:bg-blue-900 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${refreshingRecommendationId === inspectedRequest.request_id ? 'animate-spin' : ''}`} />
+                        {refreshingRecommendationId === inspectedRequest.request_id ? 'Refreshing…' : 'Refresh evidence'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
+                {recommendationErrorsMap[inspectedRequest.request_id] && inspectedRecs.length > 0 && (
+                  <p className="rounded-lg border border-amber-800 bg-amber-950/60 px-3 py-2 text-[11px] text-amber-200">
+                    Refresh failed; the candidates below are the last saved snapshot from {new Date(inspectedRecs[0].created_at).toLocaleString()}. {recommendationErrorsMap[inspectedRequest.request_id]}
+                  </p>
+                )}
+
                 {inspectedRecs.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No facility matches calculated yet.</p>
+                  <p className="text-xs text-slate-500 italic">
+                    {recommendationErrorsMap[inspectedRequest.request_id]
+                      ? `Advisory fit scores are unavailable: ${recommendationErrorsMap[inspectedRequest.request_id]}`
+                      : 'No facility matches calculated yet.'}
+                  </p>
                 ) : (
                   <div className="space-y-2">
                     {inspectedRecs.map((rec, idx) => {
@@ -593,25 +755,28 @@ export const ClinicianReviewDashboard: React.FC = () => {
                               </span>
                               {isChosen && (
                                 <span className="bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
-                                  CHOSEN ALLOCATION
+                                  SELECTED FOR REVIEW
                                 </span>
                               )}
                             </div>
                             <p className="text-[11px] text-slate-400 leading-relaxed">
                               {rec.recommendation_reason}
                             </p>
+                            <p className="text-[10px] text-slate-500">
+                              Evidence snapshot: {new Date(rec.created_at).toLocaleString()}
+                            </p>
                             <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400 pt-1">
-                              <span>Distance: <strong className="text-slate-200">{rec.distance_km} km</strong></span>
-                              <span>ETA: <strong className="text-emerald-400">~{rec.eta_minutes} mins</strong></span>
-                              <span>ICU Beds: <strong className="text-slate-200">{hospital?.available_icu_beds ?? 4}</strong></span>
+                              <span>Distance: <strong className="text-slate-200">{rec.distance_km == null ? 'Unavailable' : `${rec.distance_km} km straight-line estimate`}</strong></span>
+                              <span>ETA: <strong className="text-emerald-400">{rec.eta_minutes == null ? 'Not calculated' : `~${rec.eta_minutes} mins estimate`}</strong></span>
+                              <span>ICU beds recorded: <strong className="text-slate-200">{hospital?.available_icu_beds ?? 'Unavailable'}</strong></span>
                             </div>
                           </div>
 
                           <div className="text-right shrink-0">
                             <span className="px-2.5 py-1 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-black text-xs block">
-                              {rec.confidence_score}%
+                              {rec.confidence_score}/100
                             </span>
-                            <span className="text-[9px] text-slate-500 font-mono mt-1 block">Rank #{idx + 1}</span>
+                            <span className="text-[9px] text-slate-500 font-mono mt-1 block">Heuristic fit · not probability · #{idx + 1}</span>
                           </div>
                         </div>
                       );

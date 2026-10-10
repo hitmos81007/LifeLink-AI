@@ -47,7 +47,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 };
 
 export const LoadingState: React.FC<{ message?: string; className?: string }> = ({
-  message = 'Fetching live data from LifeLink API...',
+  message = 'Loading records...',
   className = ''
 }) => {
   return (

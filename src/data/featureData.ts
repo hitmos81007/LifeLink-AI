@@ -1,185 +1,154 @@
-import { FeatureItem, DemoUser } from '../types/landing';
+import { FeatureItem } from '../types/landing';
 
 export const FEATURE_CARDS_DATA: FeatureItem[] = [
   {
     id: 'blood-intelligence',
     title: 'Blood Intelligence',
-    category: 'Hematology Supply Chain',
-    shortDescription: 'Real-time blood bank inventory tracking, automated ABO/Rh cross-matching, and intra-hospital shortage dispatch.',
-    fullDescription: 'LifeLink AI unifies regional blood banks and hospital blood fridges into a synchronized grid. The AI automatically predicts emergency transfusion demands based on trauma incoming rates, executes instant ABO/Rh compatibility analysis, and orchestrates cold-chain courier dispatches.',
+    category: 'Blood Inventory',
+    shortDescription: 'Role-scoped blood inventory records and authorized stock updates.',
+    fullDescription: 'This prototype demonstrates selected blood inventory and request workflows using synthetic records. It does not connect regional blood banks, automate clinical compatibility decisions, or arrange delivery.',
     iconName: 'Droplet',
     accentColor: 'rose',
     metrics: [
-      { label: 'Cross-Match Speed', value: '< 2.4 sec' },
-      { label: 'Wastage Reduction', value: '42%' },
-      { label: 'Connected Banks', value: '180+' }
+      { label: 'Cross-Match Speed', value: 'Not measured' },
+      { label: 'Wastage Reduction', value: 'Not measured' },
+      { label: 'Connected Banks', value: 'Not connected' }
     ],
     keyCapabilities: [
-      'Automated ABO & Rh D-type compatibility engine',
-      'Real-time blood fridge temperature & shelf-life monitoring',
-      'Proactive rare blood group donor push notifications (O-, AB-)',
-      'Intra-facility emergency transfer routing'
+      'View blood inventory visible to the signed-in account',
+      'Authorized blood-bank users can update stock records',
+      'Blood group and stock quantities are stored in Supabase',
+      'No compatibility decision, reservation, donor alert, or delivery is performed'
     ],
     sampleOutput: {
-      status: 'MATCH FOUND',
-      detail: '4 Units O- Negative Blood reserved at Central Red Cross Depot. Dispatching cold-box express rider.',
-      time: 'ETA 11 mins'
+      status: 'ILLUSTRATIVE MATCH',
+      detail: 'A synthetic inventory record can be reviewed by an authorized user. No units are reserved and no delivery is arranged.',
+      time: 'No ETA provided'
     }
   },
   {
     id: 'icu-availability',
     title: 'ICU Availability',
     category: 'Critical Bed Management',
-    shortDescription: 'Live telemetry bed sync, ventilator tracking, predictive occupancy forecasting, and zero-delay patient admissions.',
-    fullDescription: 'Eliminate phone-tag during critical transfers. ICU Availability connects hospital EHRs and bedside sensors to broadcast live occupied, reserved, and available ventilator & isolation beds. Predictive AI anticipates discharge readiness to maximize capacity.',
+    shortDescription: 'Hospital inventory records, approval workflows, and synthetic request review.',
+    fullDescription: 'The prototype can demonstrate selected resource workflows with synthetic records. It is not connected to EHRs or bedside sensors and does not make admissions decisions.',
     iconName: 'Bed',
     accentColor: 'blue',
     metrics: [
-      { label: 'Bed Sync Frequency', value: '1000ms' },
-      { label: 'Transfer Delay Saved', value: '38 mins' },
-      { label: 'Ventilator Tracking', value: '100% Live' }
+      { label: 'Bed Sync Frequency', value: 'Not connected' },
+      { label: 'Transfer Delay Saved', value: 'Not measured' },
+      { label: 'Ventilator Tracking', value: 'Not connected' }
     ],
     keyCapabilities: [
-      'Real-time ICU, CCU, and Trauma bay status dashboard',
-      'Ventilator & dialysis machine allocation matrix',
-      'AI patient severity score integration (SOFA / APACHE II)',
-      'Direct paramedic-to-ICU bed reservation pre-arrival'
+      'Hospital staff can maintain ICU, general-bed, oxygen, and medicine inventory records',
+      'Hospital resource transfers require the configured approval workflow',
+      'Authorized clinicians can review synthetic emergency requests',
+      'No EHR, bedside-sensor, ventilator, or admission system is connected'
     ],
     sampleOutput: {
-      status: 'BED RESERVED',
-      detail: 'ICU Bay #04 (Ventilator Active) assigned for incoming STEMI patient from Paramedic Unit 12.',
-      time: 'Ready in 3 mins'
+      status: 'ILLUSTRATIVE CAPACITY',
+      detail: 'A prototype inventory workflow can display capacity records. No admission or bed reservation occurs in this example.',
+      time: 'No live bed feed'
     }
   },
   {
     id: 'ambulance-coordination',
     title: 'Ambulance Coordination',
-    category: 'Emergency Dispatch & Routing',
-    shortDescription: 'Smart ALS/BLS vehicle dispatch, Green Corridor signal preemption, and real-time paramedic telemetry feed.',
-    fullDescription: 'Transforming emergency response times with intelligent vehicle routing. LifeLink AI syncs with city traffic management systems to clear green-wave light sequences for approaching ambulances while continuously streaming patient vitals directly to the trauma team.',
+    category: 'Fleet Management',
+    shortDescription: 'Fleet records and status management for authorized provider accounts.',
+    fullDescription: 'Routing and dispatch integrations are roadmap concepts. This prototype does not contact emergency services, control traffic signals, or stream responder or patient telemetry.',
     iconName: 'Ambulance',
     accentColor: 'emerald',
     metrics: [
-      { label: 'Avg Arrival Time', value: '4.8 mins' },
-      { label: 'Traffic Light Preemption', value: '98.4%' },
-      { label: 'Live Vitals Stream', value: 'Sub-second' }
+      { label: 'Avg Arrival Time', value: 'Not measured' },
+      { label: 'Traffic Light Preemption', value: 'Not connected' },
+      { label: 'Live Vitals Stream', value: 'Not connected' }
     ],
     keyCapabilities: [
-      'Automatic nearest-unit dispatch based on GPS & skill tier',
-      'Dynamic Green-Wave traffic signal override integration',
-      'Paramedic 12-Lead ECG & vital signs live streaming to ER',
-      'Aero-medical helicopter rendezvous optimization'
+      'Authorized ambulance providers can maintain fleet records and status',
+      'Location fields are records, not live GPS tracking',
+      'Recommendations do not assign or dispatch a vehicle',
+      'No traffic-signal, paramedic telemetry, or helicopter integration exists'
     ],
     sampleOutput: {
-      status: 'GREEN CORRIDOR ACTIVE',
-      detail: 'Traffic Lights on Expressway 9 overridden to Green. Speed advantage: +34 km/h over traffic.',
-      time: 'ER ETA 4 mins'
+      status: 'PLANNED INTEGRATION',
+      detail: 'Traffic routing is a product concept only. The prototype does not contact ambulances or control traffic signals.',
+      time: 'No live routing'
     }
   },
   {
     id: 'medicine-intelligence',
     title: 'Medicine Intelligence',
-    category: 'Pharmaceutical Logistics',
-    shortDescription: 'Antidote & rare drug locator, automated expiry alerts, regional inventory pooling, and emergency delivery.',
-    fullDescription: 'Never run out of lifesaving pharmaceuticals. Medicine Intelligence maintains an active registry of rare antivenoms, thrombolytics, specialized biologics, and pediatric emergency drugs across all municipal pharmacies and medical centers.',
+    category: 'Medicine Inventory',
+    shortDescription: 'Hospital medicine stock records for authorized inventory users.',
+    fullDescription: 'Medicine inventory examples use prototype records. The app does not maintain a verified regional registry, provide medication advice, or arrange delivery.',
     iconName: 'Pill',
     accentColor: 'amber',
     metrics: [
-      { label: 'Locate Antidote Time', value: '< 15 sec' },
-      { label: 'Stockout Prevention', value: '94%' },
-      { label: 'Pharmacies Synced', value: '1,250+' }
+      { label: 'Locate Antidote Time', value: 'Not measured' },
+      { label: 'Stockout Prevention', value: 'Not measured' },
+      { label: 'Pharmacies Synced', value: 'Not connected' }
     ],
     keyCapabilities: [
-      'Instant search for critical & rare pharmaceuticals',
-      'Automated batch expiration alert & redistribution',
-      'Emergency drone delivery route integration',
-      'Counterfeit & cold-chain breach detection'
+      'Authorized hospital users can maintain medicine stock records',
+      'Inventory records include category, unit, and optional expiry date',
+      'No medication recommendations, dosage guidance, or delivery is provided',
+      'No counterfeit or cold-chain monitoring is connected'
     ],
     sampleOutput: {
-      status: 'STOCK LOCATED',
-      detail: 'Snake Antivenom Polyvalent found at St. Jude Hospital Pharmacy (4.2 km). Courier dispatched.',
-      time: 'Delivery in 8 mins'
+      status: 'ILLUSTRATIVE INVENTORY',
+      detail: 'Synthetic medicine inventory may be explored as a future workflow. This prototype does not provide medication advice or delivery.',
+      time: 'No delivery estimate'
     }
   },
   {
     id: 'disease-outbreak-prediction',
-    title: 'Disease Outbreak Prediction',
-    category: 'Epidemiological AI Surveillance',
-    shortDescription: 'Syndromic surveillance, emergency room surge modeling, vector heatmaps, and early quarantine alerts.',
-    fullDescription: 'Protect communities before outbreaks escalate. LifeLink AI aggregates emergency room intake symptoms, fever trends, and pharmacy sales to detect epidemiological anomalies up to 7 days before traditional public health reporting.',
+    title: 'Disease Trend Early-Warning Demo',
+    category: 'Synthetic Public Health Demonstration',
+    shortDescription: 'A threshold-based signal over generated aggregate trends, for demonstration only.',
+    fullDescription: 'The district dashboard compares a synthetic 7-day case-count window with a synthetic 21-day baseline. It demonstrates an early-warning signal only; no live surveillance feed, outbreak diagnosis, or public-health alert is provided.',
     iconName: 'Activity',
     accentColor: 'purple',
     metrics: [
-      { label: 'Early Detection Window', value: '+7 Days' },
-      { label: 'Anomalous Trend Accuracy', value: '96.2%' },
-      { label: 'Regions Monitored', value: '45 Zones' }
+      { label: 'Comparison Window', value: '7 days vs 21 days' },
+      { label: 'Signal Method', value: 'Threshold-based demo' },
+      { label: 'Source', value: 'Synthetic aggregates' }
     ],
     keyCapabilities: [
-      'NLP analysis of chief complaint emergency room logs',
-      'Predictive heatmaps for viral, bacterial, & vector threats',
-      'Surge staffing & PPE buffer stock auto-recommendations',
-      'Automated health authority outbreak alerts'
+      'Risk tier and count change are explained from the displayed windows',
+      'Synthetic admissions and oxygen-use proxies are shown as context',
+      'Stale data and insufficient history are called out explicitly',
+      'Official public-health confirmation is required; no alerts are sent'
     ],
     sampleOutput: {
-      status: 'SURGE WARNING',
-      detail: 'Anomalous 34% spike in viral respiratory triage in Sector 4. Recommending +15 Bed Buffer.',
-      time: 'Alert Triggered'
+      status: 'SYNTHETIC EARLY-WARNING DEMO',
+      detail: 'A synthetic trend can show normal, watch, elevated, or insufficient-data status; it is not an outbreak diagnosis.',
+      time: 'Updated when demo data is generated'
     }
   },
   {
     id: 'emergency-analytics',
     title: 'Emergency Analytics',
     category: 'Executive Resource Dashboard',
-    shortDescription: 'Regional response velocity tracking, bottleneck heatmaps, mortality reduction metrics, and compliance logs.',
-    fullDescription: 'Comprehensive, data-driven intelligence for healthcare directors and government ministers. Gain actionable clarity on emergency response performance, hospital bottleneck origins, and inter-agency collaboration efficiency.',
+    shortDescription: 'Prototype views of records currently visible to an authorized account.',
+    fullDescription: 'Available dashboard counts are limited to records visible through the current Supabase role. The prototype does not calculate mortality reduction, certify compliance, or represent regional coverage.',
     iconName: 'BarChart3',
     accentColor: 'indigo',
     metrics: [
-      { label: 'Data Points / Day', value: '4.2M' },
-      { label: 'Compliance Audit', value: 'HIPAA & GDPR' },
-      { label: 'Report Generation', value: 'Instant' }
+      { label: 'Data Points / Day', value: 'Not measured' },
+      { label: 'Compliance Audit', value: 'Not certified' },
+      { label: 'Report Generation', value: 'Prototype only' }
     ],
     keyCapabilities: [
-      'Real-time municipal emergency command map',
-      'Resource utilization bottleneck heatmaps',
-      'Standardized HL7 FHIR export & audit logging',
-      'Response time SLA tracking & benchmark scoring'
+      'View counts from records accessible to the signed-in Supabase role',
+      'District dashboard summarizes current database records',
+      'No HL7/FHIR export or external EHR connection is configured',
+      'No clinical outcomes, response SLAs, or lives-saved metrics are measured'
     ],
     sampleOutput: {
-      status: 'REPORT GENERATED',
-      detail: 'Q2 Municipal Emergency Response Velocity audit finalized. Regional average ETA decreased by 2.1 mins.',
-      time: 'Live Audit'
+      status: 'PROTOTYPE ANALYTICS',
+      detail: 'Available metrics reflect records visible to the signed-in Supabase account; no outcomes or lives-saved claims are calculated.',
+      time: 'Current records only'
     }
-  }
-];
-
-export const DEMO_USERS: DemoUser[] = [
-  {
-    role: 'HOSPITAL_ADMIN',
-    name: 'Dr. Sarah Jenkins',
-    org: 'Metro General Hospital',
-    email: 's.jenkins@metrohealth.org',
-    badge: 'Hospital Command Center'
-  },
-  {
-    role: 'BLOOD_BANK',
-    name: 'Marcus Vance',
-    org: 'Regional Red Cross Blood Hub',
-    email: 'm.vance@redcrossblood.org',
-    badge: 'Senior Hematology Specialist'
-  },
-  {
-    role: 'DISPATCHER',
-    name: 'Chief Robert Torres',
-    org: 'City Emergency Medical Services',
-    email: 'r.torres@cityems.gov',
-    badge: 'Lead Dispatcher'
-  },
-  {
-    role: 'HEALTH_MINISTRY',
-    name: 'Dr. Elena Rostova',
-    org: 'Department of Public Health',
-    email: 'e.rostova@health.gov',
-    badge: 'Chief Epidemiologist'
   }
 ];

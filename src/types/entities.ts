@@ -266,13 +266,12 @@ export interface ComplianceReport {
 }
 
 export interface AnalyticsSummary {
-  totalIncidents: number;
-  averageResponseTimeMinutes: number;
-  livesSaved: number;
-  icuOccupancyRate: number;
-  bloodFulfillmentRate: number;
-  systemUptimePercent: number;
-  resourceHealthScore: number;
+  totalRequests: number | null;
+  averageResponseTimeMinutes: number | null;
+  livesSaved: number | null;
+  icuCommittedRate: number | null;
+  bloodAssignmentRate: number | null;
+  systemUptimePercent: number | null;
 }
 
 export interface TimeSeriesPoint {

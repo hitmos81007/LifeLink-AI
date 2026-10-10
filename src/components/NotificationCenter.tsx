@@ -12,28 +12,39 @@ import { subscribeToSupabaseRealtime } from '../services/supabaseDataLayer';
 export const NotificationCenter: React.FC = () => {
   const { userProfile } = useAuth();
   const userId = userProfile?.user_id;
+  const currentUserId = useRef(userId);
+  currentUserId.current = userId;
 
   const [notifications, setNotifications] = useState<NotificationTable[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   const fetchNotifications = async () => {
-    if (!userId) return;
-    setLoading(true);
-    try {
-      const data = await getUserNotifications(userId);
-      setNotifications(data);
-    } catch (e) {
-      console.warn('fetchNotifications error:', e);
-    } finally {
+    const requestedUserId = userId;
+    if (!requestedUserId) {
       setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await getUserNotifications(requestedUserId);
+      if (currentUserId.current === requestedUserId) setNotifications(data);
+    } catch (e) {
+      if (currentUserId.current === requestedUserId) setLoadError(e instanceof Error ? e.message : 'Could not load notifications.');
+    } finally {
+      if (currentUserId.current === requestedUserId) setLoading(false);
     }
   };
 
   useEffect(() => {
+    setNotifications([]);
+    setLoadError(null);
+    setLoading(Boolean(userId));
     fetchNotifications();
 
     if (userId) {
@@ -136,14 +147,28 @@ export const NotificationCenter: React.FC = () => {
             </div>
           </div>
 
+          {loadError && notifications.length > 0 && (
+            <p className="border-b border-amber-800 bg-amber-950/40 px-3 py-2 text-[10px] text-amber-200" role="status">
+              Refresh failed; showing the last notifications loaded for this account.
+            </p>
+          )}
+
           {/* List */}
           <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60 no-scrollbar">
-            {notifications.length === 0 ? (
+            {loading && notifications.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-400" role="status">Loading your notifications…</div>
+            ) : loadError && notifications.length === 0 ? (
+              <div className="p-6 text-center space-y-2" role="alert">
+                <AlertCircle className="w-5 h-5 text-rose-400 mx-auto" />
+                <p className="text-xs text-rose-200">{loadError}</p>
+                <button onClick={fetchNotifications} className="text-xs font-bold text-sky-300 underline">Retry</button>
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="p-6 text-center space-y-1">
                 <Info className="w-6 h-6 text-slate-600 mx-auto" />
                 <p className="text-xs font-bold text-slate-300">No Notifications</p>
                 <p className="text-[11px] text-slate-500">
-                  Real-time alerts for assignments, transfers, and inventory will appear here.
+                  Trusted updates for prototype requests, transfers, and inventory thresholds will appear here.
                 </p>
               </div>
             ) : (
@@ -163,6 +188,9 @@ export const NotificationCenter: React.FC = () => {
                         <h4 className="font-bold text-white text-xs leading-tight">{n.title}</h4>
                       </div>
                       <p className="text-[11px] text-slate-300 leading-snug">{n.message}</p>
+                      {n.entity_type && n.entity_id && (
+                        <p className="text-[9px] text-sky-300/80">Related {n.entity_type.replaceAll('_', ' ')} · {n.entity_id.slice(0, 8)}</p>
+                      )}
                       <p className="text-[9px] font-mono text-slate-500 pt-0.5">
                         {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>

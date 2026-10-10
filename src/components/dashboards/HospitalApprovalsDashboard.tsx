@@ -26,6 +26,7 @@ import { subscribeToSupabaseRealtime } from '../../services/supabaseDataLayer';
 import { LoadingState, ErrorState, EmptyState } from '../common/EmptyState';
 import { hasCapability, getRoleDisplayLabel } from '../../types/roles';
 import { LeafletEmergencyMap, MapEntity } from '../common/LeafletEmergencyMap';
+import { canSourceHospitalReviewTransfer } from '../../services/resourceTransferCompatibility';
 
 export const HospitalApprovalsDashboard: React.FC = () => {
   const { userProfile } = useAuth();
@@ -35,9 +36,10 @@ export const HospitalApprovalsDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [approvalQuantities, setApprovalQuantities] = useState<Record<string, number>>({});
 
-  const userHospitalId = userProfile?.hospital_id || 'hosp-01';
-  const isAuthorized = hasCapability(userProfile?.role, 'review_hospital_approval') || userProfile?.role === 'hospital_approver';
+  const userHospitalId = userProfile?.hospital_id || '';
+  const isAuthorized = (hasCapability(userProfile?.role, 'review_hospital_approval') || userProfile?.role === 'hospital_approver') && Boolean(userHospitalId);
 
   const triggerToast = (msg: string) => {
     setToast(msg);
@@ -49,7 +51,7 @@ export const HospitalApprovalsDashboard: React.FC = () => {
     setError(null);
     try {
       const [transData, hospData] = await Promise.all([
-        getResourceTransfers(userHospitalId || undefined),
+        userHospitalId ? getResourceTransfers(userHospitalId) : Promise.resolve([]),
         userHospitalId ? getHospitalById(userHospitalId) : Promise.resolve(null)
       ]);
 
@@ -74,17 +76,17 @@ export const HospitalApprovalsDashboard: React.FC = () => {
     return () => unsubscribe();
   }, [userHospitalId]);
 
-  const handleApproveTransfer = async (transferId: string) => {
+  const handleApproveTransfer = async (transferId: string, requestedQuantity: number) => {
     setProcessingId(transferId);
     try {
       const res = await updateTransferStatus(
         transferId,
         'Approved',
-        userProfile?.user_id || 'hospital_approver_demo',
-        'Approved by designated hospital approver'
+        userProfile?.user_id || '',
+        approvalQuantities[transferId] ?? requestedQuantity
       );
       if (!res.success) throw new Error(res.error || 'Failed to approve transfer');
-      triggerToast('Inter-facility transfer approved and scheduled for dispatch!');
+      triggerToast('Prototype transfer record approved. No shipment or dispatch was scheduled.');
       await fetchData();
     } catch (err: any) {
       alert('Approval error: ' + err.message);
@@ -93,36 +95,13 @@ export const HospitalApprovalsDashboard: React.FC = () => {
     }
   };
 
-  const handleCompleteTransfer = async (transferId: string) => {
-    setProcessingId(transferId);
-    try {
-      const res = await updateTransferStatus(
-        transferId,
-        'Completed',
-        userProfile?.user_id || 'hospital_approver_demo',
-        'Resources received and added to facility inventory'
-      );
-      if (!res.success) throw new Error(res.error || 'Failed to complete transfer');
-      triggerToast('Transfer completed & inventory adjusted!');
-      await fetchData();
-    } catch (err: any) {
-      alert('Completion error: ' + err.message);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   const handleRejectTransfer = async (transferId: string) => {
-    const reason = prompt('Reason for transfer rejection:', 'Capacity constraints / critical local demand');
-    if (!reason) return;
-
     setProcessingId(transferId);
     try {
       const res = await updateTransferStatus(
         transferId,
         'Rejected',
-        userProfile?.user_id || 'hospital_approver_demo',
-        reason
+        userProfile?.user_id || ''
       );
       if (!res.success) throw new Error(res.error || 'Failed to reject transfer');
       triggerToast('Transfer rejected.');
@@ -151,34 +130,40 @@ export const HospitalApprovalsDashboard: React.FC = () => {
     }
   };
 
-  const mapEntities: MapEntity[] = [
-    {
-      id: 'hosp-01',
-      name: hospital?.hospital_name || 'Metro Regional Trauma Center',
-      type: 'hospital',
-      location: { lat: 28.6139, lng: 77.2090 },
-      address: hospital?.address || 'Sector 4 Metro Medical Corridor',
-      phone: hospital?.phone || '+91-11-2345-0001',
-      details: {
-        traumaLevel: 'Level 1 Trauma Center',
-        icuBeds: 6,
-        availableBeds: 35
-      }
-    },
-    {
-      id: 'hosp-02',
-      name: 'St. Jude Super-Specialty Hospital',
-      type: 'hospital',
-      location: { lat: 28.6300, lng: 77.2250 },
-      address: 'South District Ring Road',
-      phone: '+91-11-2345-0002',
-      details: {
-        traumaLevel: 'Level 2 Center',
-        icuBeds: 3,
-        availableBeds: 20
-      }
+  const facilityRecords = new Map<string, {
+    name: string; district: string; latitude: number | null; longitude: number | null; address: string; phone: string | null;
+  }>();
+  if (hospital) {
+    facilityRecords.set(hospital.hospital_id, {
+      name: hospital.hospital_name, district: hospital.district,
+      latitude: hospital.latitude, longitude: hospital.longitude,
+      address: hospital.address, phone: hospital.phone
+    });
+  }
+  transfers.forEach((transfer) => {
+    for (const [id, facility] of [
+      [transfer.source_hospital_id, transfer.source_hospital],
+      [transfer.destination_hospital_id, transfer.destination_hospital]
+    ] as const) {
+      if (facility) facilityRecords.set(id, facility);
     }
-  ];
+  });
+  const mapEntities: MapEntity[] = Array.from(facilityRecords.entries())
+    .filter(([, facility]) => Number.isFinite(facility.latitude) && Number.isFinite(facility.longitude))
+    .map(([id, facility]) => ({
+      id,
+      name: facility.name,
+      type: 'hospital',
+      location: { lat: facility.latitude as number, lng: facility.longitude as number },
+      address: facility.address,
+      phone: facility.phone || undefined,
+      details: { status: `Recorded facility location${facility.district ? ` • ${facility.district}` : ''}` }
+    }));
+  const mapCenter: [number, number] | null = hospital && Number.isFinite(hospital.latitude) && Number.isFinite(hospital.longitude)
+    ? [hospital.latitude as number, hospital.longitude as number]
+    : mapEntities[0] ? [mapEntities[0].location.lat, mapEntities[0].location.lng] : null;
+
+  if (!isAuthorized) return <div className="p-8 text-center text-slate-300">This approvals workspace requires an authorized hospital approver account linked to a hospital.</div>;
 
   return (
     <div className="min-h-[calc(100vh-5rem)] bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 space-y-6 rounded-2xl border border-slate-800 shadow-2xl">
@@ -232,7 +217,7 @@ export const HospitalApprovalsDashboard: React.FC = () => {
               <ArrowRightLeft className="w-5 h-5 text-indigo-400" />
               <span>Inter-Facility Resource Transfers ({transfers.length})</span>
             </h2>
-            <span className="text-xs text-slate-400 font-mono">Live Inventory Impact</span>
+            <span className="text-xs text-slate-400 font-mono">Prototype database inventory records</span>
           </div>
 
           {loading ? (
@@ -250,6 +235,7 @@ export const HospitalApprovalsDashboard: React.FC = () => {
               {transfers.map((t) => {
                 const isPending = t.status === 'Pending';
                 const isApproved = t.status === 'Approved';
+                const canReview = canSourceHospitalReviewTransfer(t, userHospitalId);
 
                 return (
                   <div
@@ -271,7 +257,7 @@ export const HospitalApprovalsDashboard: React.FC = () => {
                       </div>
 
                       <div className="text-right">
-                        <span className="text-sm font-black text-sky-400 font-mono">{t.quantity} Units</span>
+                        <span className="text-sm font-black text-sky-400 font-mono">{t.approved_quantity ?? t.quantity} Units</span>
                         <span className="text-[11px] text-slate-400 block">{t.resource_name || t.resource_type}</span>
                       </div>
                     </div>
@@ -288,23 +274,22 @@ export const HospitalApprovalsDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    {t.remarks && (
-                      <p className="text-slate-300 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[11px]">
-                        <strong>Medical Urgency / Remarks:</strong> {t.remarks}
-                      </p>
-                    )}
-
                     {/* Action Controls */}
-                    {isPending && (
+                    {canReview && (
                       <div className="flex items-center gap-3 pt-2">
                         <button
                           disabled={processingId === t.transfer_id}
-                          onClick={() => handleApproveTransfer(t.transfer_id)}
+                          onClick={() => handleApproveTransfer(t.transfer_id, t.quantity)}
                           className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
                         >
                           <Check className="w-4 h-4" />
-                          <span>Approve &amp; Schedule Shipment</span>
+                          <span>Approve simulated transfer</span>
                         </button>
+                        <label className="text-[10px] text-slate-400 flex flex-col gap-1">Approve quantity
+                          <input type="number" min="1" max={t.quantity} value={approvalQuantities[t.transfer_id] ?? t.quantity}
+                            onChange={(e) => setApprovalQuantities((old) => ({ ...old, [t.transfer_id]: Math.max(1, Math.min(t.quantity, Number(e.target.value) || 1)) }))}
+                            className="w-24 bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono" />
+                        </label>
                         <button
                           disabled={processingId === t.transfer_id}
                           onClick={() => handleRejectTransfer(t.transfer_id)}
@@ -315,18 +300,11 @@ export const HospitalApprovalsDashboard: React.FC = () => {
                       </div>
                     )}
 
-                    {isApproved && (
-                      <div className="pt-2">
-                        <button
-                          disabled={processingId === t.transfer_id}
-                          onClick={() => handleCompleteTransfer(t.transfer_id)}
-                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Confirm Shipment Delivery &amp; Restock</span>
-                        </button>
-                      </div>
+                    {isPending && !canReview && (
+                      <p className="pt-2 text-[11px] text-slate-400">Awaiting review by the source hospital approver.</p>
                     )}
+
+                    {isApproved && <p className="pt-2 text-amber-300 text-[11px]">This prototype records an approved quantity hold. It does not arrange transport; any next step must remain within a synthetic demonstration.</p>}
                   </div>
                 );
               })}
@@ -343,17 +321,17 @@ export const HospitalApprovalsDashboard: React.FC = () => {
                 <span>Inter-Hospital Logistics Map</span>
               </h3>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Monitoring regional transfer corridors and logistics routes
+                Facility coordinates from the Supabase directory. The map does not calculate a route or arrange transport.
               </p>
             </div>
 
-            <LeafletEmergencyMap
-              entities={mapEntities}
-              center={[28.6139, 77.2090]}
-              zoom={13}
-              height="360px"
-              activeRouteDestinationId="hosp-02"
-            />
+            {mapCenter && mapEntities.length > 0 ? (
+              <LeafletEmergencyMap entities={mapEntities} center={mapCenter} zoom={11} height="360px" />
+            ) : (
+              <div className="h-[360px] rounded-xl border border-slate-800 bg-slate-950 flex items-center justify-center p-6 text-center text-xs text-slate-400">
+                No facility coordinates are available in the Supabase directory for these records, so the map is hidden.
+              </div>
+            )}
           </div>
         </div>
 

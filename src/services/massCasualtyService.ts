@@ -1,4 +1,3 @@
-import { supabase } from '../lib/supabase/client';
 import { HospitalTable, AmbulanceTable } from '../types/database';
 import { calculateHaversineDistance, calculateEtaMinutes } from './aiRecommendationService';
 import { MapEntity } from '../components/common/LeafletEmergencyMap';
@@ -18,10 +17,32 @@ export interface MciTriageCount {
   black: number;   // Expectant / Deceased
 }
 
+export const createEmptyMciTriageCounts = (): MciTriageCount => ({
+  red: 0,
+  yellow: 0,
+  green: 0,
+  black: 0
+});
+
+export const createSyntheticMciExampleCounts = (): MciTriageCount => ({
+  red: 4,
+  yellow: 6,
+  green: 8,
+  black: 0
+});
+
+export const SYNTHETIC_MCI_LOCATION = {
+  name: 'Synthetic demo region',
+  latitude: 28.6180,
+  longitude: 77.2150
+} as const;
+
 export interface MciHospitalAllocation {
   hospital_id: string;
   hospital_name: string;
   trauma_center: boolean;
+  latitude: number;
+  longitude: number;
   distance_km: number;
   eta_minutes: number;
   allocated_red: number;
@@ -35,64 +56,49 @@ export interface MciIncidentReport {
   incident_id: string;
   incident_code: string;
   hazard_type: MciHazardType;
-  reported_by: string; // 'Guest First Responder' or Name
-  contact_phone?: string;
   location_name: string;
   latitude: number;
   longitude: number;
   total_casualties: number;
   triage: MciTriageCount;
-  dispatched_ambulances: {
+  unallocated: Pick<MciTriageCount, 'red' | 'yellow' | 'green'>;
+  example_ambulances: {
     ambulance_id: string;
     vehicle_number: string;
     ambulance_type: string;
     driver_name: string;
+    latitude: number;
+    longitude: number;
     eta_minutes: number;
   }[];
   hospital_allocations: MciHospitalAllocation[];
-  scene_notes?: string;
   created_at: string;
 }
 
 const LOCAL_STORAGE_MCI_KEY = 'lifelink_mci_incidents';
 
 /**
- * Low-Latency Guest Mode Mass Casualty Incident Reporting Engine.
- * Does not require patient authentication. Computes multi-hospital distribution and ambulance aggregation.
+ * Local-only synthetic MCI simulator. It must never notify users or dispatch real resources.
  */
 export async function reportMassCasualtyIncident(data: {
   hazard_type: MciHazardType;
-  reporter_name?: string;
-  reporter_phone?: string;
-  location_name?: string;
-  latitude: number;
-  longitude: number;
   triage: MciTriageCount;
-  scene_notes?: string;
 }): Promise<MciIncidentReport> {
+  const triageCounts = Object.values(data.triage);
+  if (triageCounts.some((count) => !Number.isSafeInteger(count) || count < 0)
+    || triageCounts.reduce((sum, count) => sum + count, 0) > 10000) {
+    throw new Error('Triage counts must be whole numbers from 0 to 10,000 total.');
+  }
   const total = data.triage.red + data.triage.yellow + data.triage.green + data.triage.black;
+  if (total === 0) throw new Error('Add at least one casualty to run the synthetic scenario.');
   const now = new Date().toISOString();
+  const scenarioLatitude = SYNTHETIC_MCI_LOCATION.latitude;
+  const scenarioLongitude = SYNTHETIC_MCI_LOCATION.longitude;
   const incidentCode = `MCI-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const incidentId = `mci_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-  // 1. Fetch available hospitals and ambulances in the region
-  let hospitals: HospitalTable[] = [];
-  let ambulances: AmbulanceTable[] = [];
-
-  try {
-    const [hRes, ambRes] = await Promise.all([
-      supabase.from('hospitals').select('*'),
-      supabase.from('ambulances').select('*')
-    ]);
-    hospitals = (hRes.data as HospitalTable[]) || [];
-    ambulances = (ambRes.data as AmbulanceTable[]) || [];
-  } catch (err) {
-    console.warn('Database query notice, using local facility network:', err);
-  }
-
-  // Fallback defaults if table is empty
-  if (hospitals.length === 0) {
-    hospitals = [
+  // These fixed facilities and vehicles are fictional demonstration data.
+  const hospitals: HospitalTable[] = [
       {
         hospital_id: 'hosp-01',
         hospital_name: 'Metro Regional Trauma & Emergency Institute',
@@ -100,10 +106,10 @@ export async function reportMassCasualtyIncident(data: {
         address: 'Sector 4 Metro Corridor',
         district: 'Central District',
         state: 'Delhi',
-        latitude: data.latitude + 0.015,
-        longitude: data.longitude + 0.012,
-        phone: '+91-11-2345-0001',
-        email: 'er@metrohospital.org',
+        latitude: scenarioLatitude + 0.015,
+        longitude: scenarioLongitude + 0.012,
+        phone: '0000000000',
+        email: 'demo@example.invalid',
         hospital_type: 'Government',
         trauma_center: true,
         status: 'Active',
@@ -117,10 +123,10 @@ export async function reportMassCasualtyIncident(data: {
         address: '88 Healthcare Avenue',
         district: 'South District',
         state: 'Delhi',
-        latitude: data.latitude - 0.022,
-        longitude: data.longitude + 0.018,
-        phone: '+91-11-2345-0002',
-        email: 'trauma@stjude.org',
+        latitude: scenarioLatitude - 0.022,
+        longitude: scenarioLongitude + 0.018,
+        phone: '0000000000',
+        email: 'demo@example.invalid',
         hospital_type: 'Private',
         trauma_center: true,
         status: 'Active',
@@ -134,30 +140,27 @@ export async function reportMassCasualtyIncident(data: {
         address: 'District Ring Road Hub',
         district: 'West District',
         state: 'Delhi',
-        latitude: data.latitude + 0.028,
-        longitude: data.longitude - 0.015,
-        phone: '+91-11-2345-0003',
-        email: 'admissions@citygeneral.org',
+        latitude: scenarioLatitude + 0.028,
+        longitude: scenarioLongitude - 0.015,
+        phone: '0000000000',
+        email: 'demo@example.invalid',
         hospital_type: 'Trust',
         trauma_center: false,
         status: 'Active',
         created_at: now,
         updated_at: now
       }
-    ];
-  }
-
-  if (ambulances.length === 0) {
-    ambulances = [
+  ];
+  const ambulances: AmbulanceTable[] = [
       {
         ambulance_id: 'amb-mci-1',
         provider_id: 'prov-1',
-        vehicle_number: 'DL-01-AMB-8812',
+        vehicle_number: 'DEMO-AMB-01',
         ambulance_type: 'ICU',
-        driver_name: 'Commander Marcus Vance',
-        driver_phone: '+91-98765-11001',
-        current_latitude: data.latitude + 0.006,
-        current_longitude: data.longitude - 0.004,
+        driver_name: 'Synthetic crew',
+        driver_phone: '0000000000',
+        current_latitude: scenarioLatitude + 0.006,
+        current_longitude: scenarioLongitude - 0.004,
         status: 'Available',
         assigned_hospital: null,
         created_at: now,
@@ -166,12 +169,12 @@ export async function reportMassCasualtyIncident(data: {
       {
         ambulance_id: 'amb-mci-2',
         provider_id: 'prov-1',
-        vehicle_number: 'DL-01-AMB-4409',
+        vehicle_number: 'DEMO-AMB-02',
         ambulance_type: 'ALS',
-        driver_name: 'Paramedic Sarah Jenkins',
-        driver_phone: '+91-98765-11002',
-        current_latitude: data.latitude - 0.008,
-        current_longitude: data.longitude + 0.007,
+        driver_name: 'Synthetic crew',
+        driver_phone: '0000000000',
+        current_latitude: scenarioLatitude - 0.008,
+        current_longitude: scenarioLongitude + 0.007,
         status: 'Available',
         assigned_hospital: null,
         created_at: now,
@@ -180,24 +183,23 @@ export async function reportMassCasualtyIncident(data: {
       {
         ambulance_id: 'amb-mci-3',
         provider_id: 'prov-1',
-        vehicle_number: 'DL-01-AMB-9921',
+        vehicle_number: 'DEMO-AMB-03',
         ambulance_type: 'BLS',
-        driver_name: 'Officer Rajesh Kumar',
-        driver_phone: '+91-98765-11003',
-        current_latitude: data.latitude + 0.012,
-        current_longitude: data.longitude + 0.005,
+        driver_name: 'Synthetic crew',
+        driver_phone: '0000000000',
+        current_latitude: scenarioLatitude + 0.012,
+        current_longitude: scenarioLongitude + 0.005,
         status: 'Available',
         assigned_hospital: null,
         created_at: now,
         updated_at: now
       }
-    ];
-  }
+  ];
 
   // 2. Multi-Hospital Load Distribution Algorithm
   // Calculate distances to all hospitals
   const sortedHospitals = hospitals.map((h) => {
-    const dist = calculateHaversineDistance(data.latitude, data.longitude, h.latitude, h.longitude);
+    const dist = calculateHaversineDistance(scenarioLatitude, scenarioLongitude, h.latitude, h.longitude);
     const eta = calculateEtaMinutes(dist);
     return {
       hospital: h,
@@ -237,6 +239,8 @@ export async function reportMassCasualtyIncident(data: {
       hospital_id: item.hospital.hospital_id,
       hospital_name: item.hospital.hospital_name,
       trauma_center: item.hospital.trauma_center,
+      latitude: item.hospital.latitude,
+      longitude: item.hospital.longitude,
       distance_km: item.distance_km,
       eta_minutes: item.eta_minutes,
       allocated_red: redTake,
@@ -247,19 +251,20 @@ export async function reportMassCasualtyIncident(data: {
     });
   }
 
-  // If any remaining, overflow to top hospital
-  if (remainingRed > 0 && allocations.length > 0) allocations[0].allocated_red += remainingRed;
-  if (remainingYellow > 0 && allocations.length > 0) allocations[0].allocated_yellow += remainingYellow;
-  if (remainingGreen > 0 && allocations.length > 0) allocations[0].allocated_green += remainingGreen;
+  // Preserve unmet demand explicitly. Never imply that a facility can accept
+  // more people than its illustrative capacity supports.
+  const unallocated = { red: remainingRed, yellow: remainingYellow, green: remainingGreen };
 
   // 3. Multi-Ambulance Rapid Dispatch Unit Selection
-  const dispatchedAmbulances = ambulances.slice(0, 4).map((a) => {
-    const dist = calculateHaversineDistance(data.latitude, data.longitude, a.current_latitude, a.current_longitude);
+  const exampleAmbulances = ambulances.map((a) => {
+    const dist = calculateHaversineDistance(scenarioLatitude, scenarioLongitude, a.current_latitude, a.current_longitude);
     return {
       ambulance_id: a.ambulance_id,
       vehicle_number: a.vehicle_number,
       ambulance_type: a.ambulance_type,
       driver_name: a.driver_name,
+      latitude: a.current_latitude,
+      longitude: a.current_longitude,
       eta_minutes: calculateEtaMinutes(dist)
     };
   });
@@ -268,20 +273,18 @@ export async function reportMassCasualtyIncident(data: {
     incident_id: incidentId,
     incident_code: incidentCode,
     hazard_type: data.hazard_type,
-    reported_by: data.reporter_name || 'Guest First Responder (Anonymous)',
-    contact_phone: data.reporter_phone || undefined,
-    location_name: data.location_name || `Disaster Site (${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)})`,
-    latitude: data.latitude,
-    longitude: data.longitude,
+    location_name: SYNTHETIC_MCI_LOCATION.name,
+    latitude: scenarioLatitude,
+    longitude: scenarioLongitude,
     total_casualties: total,
     triage: data.triage,
-    dispatched_ambulances: dispatchedAmbulances,
+    unallocated,
+    example_ambulances: exampleAmbulances,
     hospital_allocations: allocations,
-    scene_notes: data.scene_notes || undefined,
     created_at: now
   };
 
-  // 4. Save to local storage for instant multi-tab sync
+  // Persist locally so a successful submission cannot be mistaken for a saved report on failure.
   try {
     const existingRaw = localStorage.getItem(LOCAL_STORAGE_MCI_KEY);
     const existingList: MciIncidentReport[] = existingRaw ? JSON.parse(existingRaw) : [];
@@ -289,21 +292,7 @@ export async function reportMassCasualtyIncident(data: {
     localStorage.setItem(LOCAL_STORAGE_MCI_KEY, JSON.stringify(existingList.slice(0, 20)));
   } catch (e) {
     console.warn('LocalStorage save error:', e);
-  }
-
-  // 5. Broadcast to Supabase notifications
-  try {
-    await supabase.from('notifications').insert([{
-      receiver_id: '00000000-0000-0000-0000-000000000000',
-      title: `🚨 MASS CASUALTY INCIDENT REPORTED (${incidentCode})`,
-      message: `${data.hazard_type} with ${total} estimated casualties (Red: ${data.triage.red}, Yellow: ${data.triage.yellow}). Dispatched ${dispatchedAmbulances.length} ambulances.`,
-      priority: 'Critical',
-      is_read: false,
-      created_at: now,
-      updated_at: now
-    }]);
-  } catch (notifErr) {
-    console.warn('MCI notification broadcast warning:', notifErr);
+    throw new Error('The local simulation could not be saved in this browser. No report was submitted.');
   }
 
   return report;
@@ -316,58 +305,12 @@ export function getRecentMciIncidents(): MciIncidentReport[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_MCI_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed as MciIncidentReport[] : [];
     }
   } catch (e) {
     console.warn('getRecentMciIncidents parse error:', e);
   }
 
-  // Return sample default incident for instant demonstration
-  return [
-    {
-      incident_id: 'mci-demo-1',
-      incident_code: 'MCI-2026-9042',
-      hazard_type: 'Multi-Vehicle Collision / Highway Pileup',
-      reported_by: 'Guest First Responder #12',
-      contact_phone: '+91-98765-91100',
-      location_name: 'National Expressway Sector 12 Flyover',
-      latitude: 28.6180,
-      longitude: 77.2150,
-      total_casualties: 18,
-      triage: { red: 4, yellow: 6, green: 7, black: 1 },
-      dispatched_ambulances: [
-        { ambulance_id: 'amb-1', vehicle_number: 'DL-01-AMB-8812', ambulance_type: 'ICU', driver_name: 'Capt. Marcus Vance', eta_minutes: 4 },
-        { ambulance_id: 'amb-2', vehicle_number: 'DL-01-AMB-4409', ambulance_type: 'ALS', driver_name: 'Sgt. Elena Rostova', eta_minutes: 6 },
-        { ambulance_id: 'amb-3', vehicle_number: 'DL-01-AMB-9921', ambulance_type: 'BLS', driver_name: 'Officer Rajesh Kumar', eta_minutes: 8 }
-      ],
-      hospital_allocations: [
-        {
-          hospital_id: 'hosp-01',
-          hospital_name: 'Metro Regional Trauma Center',
-          trauma_center: true,
-          distance_km: 2.4,
-          eta_minutes: 6,
-          allocated_red: 3,
-          allocated_yellow: 2,
-          allocated_green: 2,
-          open_icu_beds: 6,
-          open_general_beds: 30
-        },
-        {
-          hospital_id: 'hosp-02',
-          hospital_name: 'St. Jude Emergency Institute',
-          trauma_center: true,
-          distance_km: 4.1,
-          eta_minutes: 9,
-          allocated_red: 1,
-          allocated_yellow: 4,
-          allocated_green: 5,
-          open_icu_beds: 3,
-          open_general_beds: 22
-        }
-      ],
-      scene_notes: '3-bus multi-vehicle crash, structural debris on expressway, extrication tools deployed.',
-      created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString()
-    }
-  ];
+  return [];
 }

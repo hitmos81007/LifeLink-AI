@@ -29,10 +29,10 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
             </span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Connecting Critical Healthcare Infrastructure
+            A Prototype for Coordinated Emergency Resources
           </h2>
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-            In emergency medicine, every second counts. LifeLink AI bridges fragmented healthcare networks with real-time intelligence, ensuring lifesaving resources reach patients without delay.
+            LifeLink AI explores how hospitals and emergency teams could coordinate resource availability. This prototype uses synthetic data and is not connected to live care systems.
           </p>
         </div>
 
@@ -43,9 +43,9 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
             <div className="p-2.5 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 w-fit">
               <Zap className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Sub-Second Speed</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Supabase-backed workflows</h3>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Real-time event streams process ICU bed changes, blood bank fridge updates, and GPS vehicle coordinates in milliseconds.
+              Supabase Auth and PostgreSQL support the prototype's account and resource workflows. The displayed scenarios are not live telemetry.
             </p>
           </div>
 
@@ -53,9 +53,9 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
             <div className="p-2.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 w-fit">
               <Sparkles className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Gemini 3.6 Precision</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">AI as decision support</h3>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Server-side clinical AI triage scores patient acuity, predicts hospital bed capacity, and optimizes traffic signal preemption.
+              Rule-based prototype matches are advisory, not validated probabilities. A qualified human must review clinical and resource decisions.
             </p>
           </div>
 
@@ -63,9 +63,9 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
             <div className="p-2.5 rounded-lg bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 w-fit">
               <Network className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">HL7 / FHIR Native</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Integration roadmap</h3>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Plug-and-play REST & OpenAPI 3.1 connectors integrate with Epic, Cerner, and municipal EMS databases effortlessly.
+              EHR, FHIR, and emergency-service integrations are planned and are not connected in this prototype.
             </p>
           </div>
 
@@ -73,9 +73,9 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
             <div className="p-2.5 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 w-fit">
               <Lock className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Zero-Trust Security</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Role-scoped access</h3>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Role-based access control with backend Auth Custom Claims JWT ensures strict data privacy and HIPAA compliance.
+              Supabase Auth and PostgreSQL row-level security are used for account-scoped data access. This is not a compliance certification.
             </p>
           </div>
 
@@ -90,6 +90,7 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
             <h3 className="text-xl sm:text-2xl font-bold text-white">
               How LifeLink AI Empowers Every Emergency Partner
             </h3>
+            <p className="mt-2 text-xs text-amber-200">These panels describe planned workflows. External hospital, blood bank, ambulance, and traffic systems are not connected.</p>
           </div>
 
           {/* Role Tabs */}
@@ -151,16 +152,16 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
                   Hospital Command Center Integration
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Hospital administrators receive instant notifications when incoming critical patients require specialized trauma bays, ventilators, or blood transfusions. Bed status syncs automatically with paramedic dispatchers to eliminate ER overflow.
+                  The prototype explores hospital resource coordination. EHR integration, paramedic synchronization, and automated notifications are not connected.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Live ICU & CCU ventilator occupancy telemetry</span>
+                    <span>Planned: ICU and CCU resource visibility</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Direct Cath Lab & Trauma Bay reservations</span>
+                    <span>Planned: specialized resource workflows</span>
                   </div>
                 </div>
               </div>
@@ -172,16 +173,16 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
                   Regional Blood Supply Network
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Blood banks avoid stockouts through predictive demand modeling. When emergency trauma cases occur, the system automatically reserves matching blood bags and coordinates express cold-box transport.
+                  Blood inventory coordination is a product direction. This prototype does not forecast stockouts, make transfusion decisions, or arrange transport.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Instant ABO & Rh D-type compatibility checks</span>
+                    <span>Planned: clinician-reviewed compatibility workflow</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Proactive donor push alerts for rare blood groups</span>
+                    <span>Planned: verified blood bank notifications</span>
                   </div>
                 </div>
               </div>
@@ -193,16 +194,16 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
                   Emergency Medical Dispatch & Green Corridor
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  First responders get turn-by-turn preemption routing that controls traffic signals in real-time, shaving vital minutes off hospital transport times while streaming patient vitals directly to the trauma team.
+                  The roadmap includes routing and traffic coordination concepts. This prototype does not control signals, dispatch responders, or stream patient vitals.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Traffic signal Green Corridor override activation</span>
+                    <span>Planned: traffic coordination integration</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Paramedic 12-Lead ECG & vital signs live feed</span>
+                    <span>Planned: responder data integration</span>
                   </div>
                 </div>
               </div>
@@ -214,16 +215,16 @@ export const AboutSection: React.FC<{ onOpenGetStarted: () => void }> = ({ onOpe
                   Epidemiological & Emergency Resource Oversight
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Public health directors gain a bird's-eye view of regional emergency velocity, epidemic surge early warnings, and critical pharmaceutical stockpiles across all municipal sectors.
+                  The district dashboard demonstrates threshold-based early-warning signals from synthetic aggregate case counts, admissions, and resource-use proxies. It is not connected to public-health surveillance, does not diagnose outbreaks, and does not report SLA compliance.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Disease outbreak anomaly detection heatmaps</span>
+                    <span>Demo: early-warning signals from aggregated synthetic trends</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Standardized response SLA compliance reports</span>
+                    <span>Demo: district trend source windows and data freshness</span>
                   </div>
                 </div>
               </div>

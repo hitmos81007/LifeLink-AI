@@ -1,18 +1,27 @@
 import { supabase } from '../lib/supabase/client';
-import { PatientRequestTable, EmergencyType, BloodGroup, SeverityLevel, RequestStatus } from '../types/database';
-import { sendNotification } from './supabaseDataLayer';
+import { PatientRequestTable, EmergencyType, BloodGroup, SeverityLevel } from '../types/database';
+
+const PATIENT_REQUEST_PAGE_SIZE = 500;
 
 export async function getPatientRequests(patientId?: string): Promise<PatientRequestTable[]> {
-  let query = supabase.from('patient_requests').select('*').order('created_at', { ascending: false });
-  if (patientId) {
-    query = query.eq('patient_id', patientId);
+  const requests: PatientRequestTable[] = [];
+  for (let from = 0; ; from += PATIENT_REQUEST_PAGE_SIZE) {
+    let query = supabase.from('patient_requests').select('*')
+      .eq('data_origin', 'synthetic')
+      .order('created_at', { ascending: false })
+      .order('request_id', { ascending: false });
+    if (patientId) query = query.eq('patient_id', patientId);
+    query = query.range(from, from + PATIENT_REQUEST_PAGE_SIZE - 1);
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('getPatientRequests query error:', error.message);
+      throw new Error(`Failed to load patient requests: ${error.message}`);
+    }
+    if (!data) throw new Error('Failed to load patient requests: Supabase returned no data.');
+    requests.push(...(data as PatientRequestTable[]));
+    if (data.length < PATIENT_REQUEST_PAGE_SIZE) return requests;
   }
-  const { data, error } = await query;
-  if (error) {
-    console.error('getPatientRequests query error:', error.message);
-    throw new Error(`Failed to load patient requests: ${error.message}`);
-  }
-  return (data as PatientRequestTable[]) || [];
 }
 
 export async function getPendingRequests(): Promise<PatientRequestTable[]> {
@@ -21,7 +30,6 @@ export async function getPendingRequests(): Promise<PatientRequestTable[]> {
 }
 
 export async function createPatientEmergencyRequest(data: {
-  patient_id: string;
   emergency_type: EmergencyType;
   required_blood_group?: BloodGroup | null;
   needs_blood: boolean;
@@ -31,91 +39,44 @@ export async function createPatientEmergencyRequest(data: {
   needs_ambulance: boolean;
   severity: SeverityLevel;
   reported_severity?: SeverityLevel;
-  latitude?: number | null;
-  longitude?: number | null;
-  notes?: string | null;
+  simulationLocation?: { latitude: number; longitude: number } | null;
 }): Promise<PatientRequestTable> {
-  const now = new Date().toISOString();
   const reportedSev = data.reported_severity || data.severity;
-  
-  const payload = {
-    patient_id: data.patient_id,
-    emergency_type: data.emergency_type,
-    required_blood_group: data.required_blood_group || null,
-    needs_blood: data.needs_blood,
-    needs_icu: data.needs_icu,
-    needs_general_bed: data.needs_general_bed,
-    needs_oxygen: data.needs_oxygen,
-    needs_ambulance: data.needs_ambulance,
-    reported_severity: reportedSev,
-    severity: reportedSev, // Backward compatibility
-    latitude: data.latitude ?? 28.6139,
-    longitude: data.longitude ?? 77.2090,
-    status: 'Pending' as RequestStatus,
-    notes: data.notes || null,
-    created_at: now,
-    updated_at: now
-  };
-
-  // Insert into Supabase patient_requests table
-  const { data: inserted, error } = await supabase
-    .from('patient_requests')
-    .insert([payload])
-    .select()
-    .single();
+  const simulationLocation = data.simulationLocation ?? null;
+  if (simulationLocation && (
+    !Number.isFinite(simulationLocation.latitude) || !Number.isFinite(simulationLocation.longitude)
+    || simulationLocation.latitude < -90 || simulationLocation.latitude > 90
+    || simulationLocation.longitude < -180 || simulationLocation.longitude > 180
+  )) {
+    throw new Error('The fictional map point must have valid latitude and longitude values.');
+  }
+  const coarseLocation = simulationLocation
+    ? {
+        latitude: Math.round(simulationLocation.latitude * 100) / 100,
+        longitude: Math.round(simulationLocation.longitude * 100) / 100
+      }
+    : null;
+  const { data: inserted, error } = await supabase.rpc('create_synthetic_patient_request_with_location', {
+    p_emergency_type: data.emergency_type,
+    p_required_blood_group: data.needs_blood ? data.required_blood_group || null : null,
+    p_needs_blood: data.needs_blood,
+    p_needs_icu: data.needs_icu,
+    p_needs_general_bed: data.needs_general_bed,
+    p_needs_oxygen: data.needs_oxygen,
+    p_needs_ambulance: data.needs_ambulance,
+    p_reported_severity: reportedSev,
+    p_latitude: coarseLocation?.latitude ?? null,
+    p_longitude: coarseLocation?.longitude ?? null
+  });
 
   if (error) {
-    console.error('Supabase patient_requests insert error:', error.message);
+      console.error('Supabase patient request RPC error:', error.message);
     throw new Error(`Failed to record emergency request in database: ${error.message}`);
   }
 
-  if (inserted) {
-    try {
-      await sendNotification(
-        data.patient_id,
-        'Emergency Request Created',
-        `Your emergency request for ${data.emergency_type} has been submitted with self-reported severity ${reportedSev}.`,
-        reportedSev === 'Critical' ? 'Critical' : reportedSev === 'High' ? 'High' : 'Medium'
-      );
-    } catch {}
-    return inserted as PatientRequestTable;
+  const request = (Array.isArray(inserted) ? inserted[0] : inserted) as PatientRequestTable | null;
+  if (!request?.request_id || request.data_origin !== 'synthetic') {
+    throw new Error('No verified synthetic request row was returned. Refresh and verify before continuing.');
   }
-
-  throw new Error('No record returned after emergency request creation.');
-}
-
-export async function updateRequestStatus(
-  requestId: string,
-  status: RequestStatus,
-  notes?: string
-): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from('patient_requests')
-      .update({ status, notes, updated_at: new Date().toISOString() })
-      .eq('request_id', requestId);
-    if (!error) return true;
-  } catch (err) {
-    console.warn('updateRequestStatus DB notice:', err);
-  }
-
-  // Update in local fallback
-  try {
-    const localRaw = localStorage.getItem('local_patient_requests');
-    if (localRaw) {
-      const items = JSON.parse(localRaw) as PatientRequestTable[];
-      const idx = items.findIndex(r => r.request_id === requestId);
-      if (idx !== -1) {
-        items[idx].status = status;
-        if (notes) items[idx].notes = notes;
-        items[idx].updated_at = new Date().toISOString();
-        localStorage.setItem('local_patient_requests', JSON.stringify(items));
-        return true;
-      }
-    }
-  } catch (e) {
-    console.warn('Local updateRequestStatus error:', e);
-  }
-
-  return false;
+  return request;
 }

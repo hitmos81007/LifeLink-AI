@@ -30,6 +30,9 @@ import {
 import { ResourceTransferTable, AuditLogTable } from '../../types/database';
 import { subscribeToSupabaseRealtime } from '../../services/supabaseDataLayer';
 import { LoadingState, ErrorState } from '../common/EmptyState';
+import { IncidentPlanningPanel } from '../mci/IncidentPlanningPanel';
+import { SyntheticDiseaseEarlyWarningPanel } from './SyntheticDiseaseEarlyWarningPanel';
+import { ResourceRiskAlertsPanel } from './ResourceRiskAlertsPanel';
 
 export const GovernmentDashboard: React.FC = () => {
   const { userProfile } = useAuth();
@@ -71,7 +74,7 @@ export const GovernmentDashboard: React.FC = () => {
       setLogs(lg);
     } catch (err: any) {
       console.error('GovernmentDashboard load error:', err);
-      setError('Failed to fetch state oversight metrics from Supabase.');
+      setError(`Could not load state oversight data from Supabase. ${err?.message || 'Check your access and connection, then retry.'}`);
     } finally {
       setLoading(false);
     }
@@ -117,6 +120,8 @@ export const GovernmentDashboard: React.FC = () => {
         <ErrorState message={error} onRetry={fetchData} />
       ) : (
         <div className="space-y-6">
+          <IncidentPlanningPanel mode="coordinator" />
+          <ResourceRiskAlertsPanel />
           {/* Key Metrics Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-1">
@@ -220,9 +225,11 @@ export const GovernmentDashboard: React.FC = () => {
           {/* Statewide Operational Demand Predictions & Aggregated Stockout Risks */}
           <OperationalPredictionManager
             isGovtAdmin={true}
-            title="Statewide Aggregated Operational Demand Predictions"
-            subtitle="Authorized government view displaying aggregated stockout forecasts across all regional medical facilities calculated from live Supabase inventory and demand logs."
+            title="Aggregate Synthetic Bed Request Rates"
+            subtitle="Aggregate bed-rate estimates from clinician-confirmed synthetic scenarios assigned to facilities within the past 30 days. They are not trained or validated forecasts."
           />
+
+          <SyntheticDiseaseEarlyWarningPanel />
 
           {/* Resource Transfers & Audit Logs */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -233,7 +240,7 @@ export const GovernmentDashboard: React.FC = () => {
                   <Zap className="w-5 h-5 text-amber-400" />
                   <span>Inter-Hospital Resource Transfers (resource_transfers)</span>
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">Live allocation workflows across regional medical facilities.</p>
+                <p className="text-xs text-slate-400 mt-1">Synthetic resource scenarios and records visible to this account.</p>
               </div>
 
               {transfers.length === 0 ? (

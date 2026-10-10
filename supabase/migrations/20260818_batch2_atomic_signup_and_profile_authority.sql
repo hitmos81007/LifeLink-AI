@@ -61,7 +61,7 @@ END $$;
 -- Rules:
 -- 1. Evaluates raw_user_meta_data from auth.users insert.
 -- 2. Rejects invalid, missing, or unapproved roles (e.g. clinician_reviewer, hospital_approver).
--- 3. Allowed public signup roles: patient, hospital_admin, blood_bank_admin, ambulance_admin, government_admin.
+-- 3. Public signup roles exclude government_admin; trusted Auth Admin provisioning is separately marked in app metadata.
 -- 4. Atomically creates provider entity for provider roles using database-generated UUIDs and unique codes.
 -- 5. Creates public.users profile row with database-authoritative role and provider FK.
 -- 6. Rolls back the entire transaction if any validation or insertion fails.
@@ -106,6 +106,11 @@ BEGIN
   END IF;
 
   -- 1. Role Validation: Reject invalid, missing, or protected roles
+  IF v_role_str = 'government_admin'
+     AND COALESCE(NEW.raw_app_meta_data->>'trusted_role_provisioning', 'false') <> 'true' THEN
+    RAISE EXCEPTION 'Registration failed: District Coordinator accounts must be provisioned by a trusted administrator.';
+  END IF;
+
   IF v_role_str NOT IN ('patient', 'hospital_admin', 'blood_bank_admin', 'ambulance_admin', 'government_admin') THEN
     RAISE EXCEPTION 'Registration failed: Role "%" is not an authorized public signup role. Protected roles cannot be self-assigned.', v_role_str;
   END IF;
@@ -176,15 +181,15 @@ BEGIN
 
     -- Initialize basic inventory records for the new hospital
     INSERT INTO public.icu_inventory (hospital_id, total_icu_beds, occupied_icu_beds, reserved_icu_beds, available_icu_beds, created_at, updated_at)
-    VALUES (v_hospital_id, 10, 0, 0, 10, NOW(), NOW())
+    VALUES (v_hospital_id, 0, 0, 0, 0, NOW(), NOW())
     ON CONFLICT DO NOTHING;
 
     INSERT INTO public.general_bed_inventory (hospital_id, total_beds, occupied_beds, reserved_beds, available_beds, created_at, updated_at)
-    VALUES (v_hospital_id, 50, 0, 0, 50, NOW(), NOW())
+    VALUES (v_hospital_id, 0, 0, 0, 0, NOW(), NOW())
     ON CONFLICT DO NOTHING;
 
     INSERT INTO public.oxygen_inventory (hospital_id, oxygen_type, total_capacity, available_capacity, minimum_threshold, unit, created_at, updated_at)
-    VALUES (v_hospital_id, 'Cylinder', 100, 100, 20, 'Cylinders', NOW(), NOW())
+    VALUES (v_hospital_id, 'Cylinder', 0, 0, 0, 'Cylinders', NOW(), NOW())
     ON CONFLICT DO NOTHING;
 
   ELSIF v_role_str = 'blood_bank_admin' THEN

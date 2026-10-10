@@ -8,11 +8,9 @@ import {
 
 export async function getAmbulanceProviders(): Promise<AmbulanceProviderTable[]> {
   const { data, error } = await supabase.from('ambulance_providers').select('*');
-  if (error) {
-    console.warn('getAmbulanceProviders error:', error.message);
-    return [];
-  }
-  return (data || []) as AmbulanceProviderTable[];
+  if (error) throw new Error(`Failed to fetch ambulance providers: ${error.message}`);
+  if (!data) throw new Error('Failed to fetch ambulance providers: Supabase returned no data.');
+  return data as AmbulanceProviderTable[];
 }
 
 export async function getAmbulanceProviderById(providerId: string): Promise<AmbulanceProviderTable | null> {
@@ -20,13 +18,10 @@ export async function getAmbulanceProviderById(providerId: string): Promise<Ambu
     .from('ambulance_providers')
     .select('*')
     .eq('provider_id', providerId)
-    .single();
+    .maybeSingle();
 
-  if (error) {
-    console.warn('getAmbulanceProviderById error:', error.message);
-    return null;
-  }
-  return data as AmbulanceProviderTable;
+  if (error) throw new Error(`Failed to fetch linked ambulance provider: ${error.message}`);
+  return data as AmbulanceProviderTable | null;
 }
 
 export async function getAmbulances(providerId?: string): Promise<AmbulanceTable[]> {
@@ -38,7 +33,8 @@ export async function getAmbulances(providerId?: string): Promise<AmbulanceTable
   if (error) {
     throw new Error(`Failed to fetch ambulances: ${error.message}`);
   }
-  return (data || []) as AmbulanceTable[];
+  if (!data) throw new Error('Failed to fetch ambulances: Supabase returned no data.');
+  return data as AmbulanceTable[];
 }
 
 export async function createAmbulance(data: {

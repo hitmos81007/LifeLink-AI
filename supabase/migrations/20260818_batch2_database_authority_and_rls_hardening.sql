@@ -482,6 +482,17 @@ ALTER TABLE public.ai_recommendations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prediction_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.resource_transfers ENABLE ROW LEVEL SECURITY;
 
+-- Remove legacy public policies from the earlier repair scripts. Permissive policies
+-- are OR-combined with the scoped policies below, so leaving even one open policy
+-- would preserve anonymous access or direct writes.
+DROP POLICY IF EXISTS "Allow select ai_recommendations" ON public.ai_recommendations;
+DROP POLICY IF EXISTS "Allow insert ai_recommendations" ON public.ai_recommendations;
+DROP POLICY IF EXISTS "Allow update ai_recommendations" ON public.ai_recommendations;
+DROP POLICY IF EXISTS "Allow delete ai_recommendations" ON public.ai_recommendations;
+DROP POLICY IF EXISTS "Allow select resource_transfers" ON public.resource_transfers;
+DROP POLICY IF EXISTS "Allow insert resource_transfers" ON public.resource_transfers;
+DROP POLICY IF EXISTS "Allow update resource_transfers" ON public.resource_transfers;
+
 DROP POLICY IF EXISTS "Allow select for authenticated users" ON public.ai_recommendations;
 DROP POLICY IF EXISTS "Allow all for authenticated users" ON public.ai_recommendations;
 DROP POLICY IF EXISTS "AI recommendations read access" ON public.ai_recommendations;

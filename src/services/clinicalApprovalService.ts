@@ -5,324 +5,127 @@ import {
   HospitalTable,
   BloodBankTable,
   AmbulanceTable,
-  SeverityLevel,
-  ConfirmationStatus
+  SeverityLevel
 } from '../types/database';
-import { updateRequestStatus } from './patientRequestService';
-import { sendNotification } from './supabaseDataLayer';
-import { calculateHaversineDistance, calculateEtaMinutes } from './aiRecommendationService';
 import { MapEntity } from '../components/common/LeafletEmergencyMap';
+import { getResourceFreshness } from './resourceFreshness';
+import { isValidCoordinatePair } from './geoService';
 
 export interface ClinicalApprovalParams {
   requestId: string;
-  clinicianId: string;
-  clinicianName: string;
-  confirmedUrgency: SeverityLevel;
+  confirmedUrgency?: SeverityLevel;
   selectedHospitalId: string;
   selectedAmbulanceId?: string | null;
   selectedBloodBankId?: string | null;
-  clinicalNotes?: string;
 }
 
-export interface ClinicalFacilityNetwork {
-  hospitals: (HospitalTable & { available_icu_beds: number; available_beds: number; oxygen_capacity: number })[];
-  bloodBanks: (BloodBankTable & { blood_stock: Record<string, number> })[];
-  ambulances: AmbulanceTable[];
+export interface ClinicalReviewNetwork {
+  hospitals: Array<Pick<HospitalTable, 'hospital_id' | 'hospital_name' | 'address' | 'district' | 'latitude' | 'longitude' | 'trauma_center' | 'status'> & {
+    available_icu_beds: number; available_beds: number; available_oxygen_records: number;
+    icu_updated_at?: string | null; beds_updated_at?: string | null; oxygen_updated_at?: string | null;
+  }>;
+  bloodBanks: Array<Pick<BloodBankTable, 'blood_bank_id' | 'blood_bank_name' | 'address' | 'district' | 'latitude' | 'longitude' | 'status'> & {
+    blood_stock: Record<string, number>; blood_thresholds: Record<string, number>;
+    blood_updated_at?: Record<string, string | null>;
+  }>;
+  ambulances: Array<Pick<AmbulanceTable, 'ambulance_id' | 'vehicle_number' | 'ambulance_type' | 'status' | 'current_latitude' | 'current_longitude' | 'assigned_hospital'> & { updated_at?: string | null }>;
   mapEntities: MapEntity[];
 }
 
-/**
- * Loads all active healthcare facilities, real-time inventory counts, and ambulances
- * formatted for calculation and direct Leaflet GIS visualization.
- */
-export async function getFacilityNetwork(): Promise<ClinicalFacilityNetwork> {
-  try {
-    const [hRes, icuRes, bedRes, oxyRes, bbRes, bInvRes, ambRes] = await Promise.all([
-      supabase.from('hospitals').select('*'),
-      supabase.from('icu_inventory').select('*'),
-      supabase.from('general_bed_inventory').select('*'),
-      supabase.from('oxygen_inventory').select('*'),
-      supabase.from('blood_banks').select('*'),
-      supabase.from('blood_inventory').select('*'),
-      supabase.from('ambulances').select('*')
-    ]);
+/** Minimal facility candidates for synthetic clinician review, returned by a role-checked RPC. */
+export async function getClinicalReviewNetwork(): Promise<ClinicalReviewNetwork> {
+  const { data, error } = await supabase.rpc('get_clinician_review_network');
+  if (error) throw new Error(`Could not load clinician review candidates: ${error.message}`);
+  if (!data || typeof data !== 'object') throw new Error('Clinician review candidate data was not returned.');
 
-    const hospitals = (hRes.data || []) as HospitalTable[];
-    const icuList = (icuRes.data || []) as any[];
-    const bedList = (bedRes.data || []) as any[];
-    const oxyList = (oxyRes.data || []) as any[];
-    const bloodBanks = (bbRes.data || []) as BloodBankTable[];
-    const bloodInvList = (bInvRes.data || []) as any[];
-    const ambulances = (ambRes.data || []) as AmbulanceTable[];
+  const network = data as Omit<ClinicalReviewNetwork, 'mapEntities'>;
+  const hospitals = Array.isArray(network.hospitals) ? network.hospitals : [];
+  const bloodBanks = Array.isArray(network.bloodBanks) ? network.bloodBanks : [];
+  const ambulances = Array.isArray(network.ambulances) ? network.ambulances : [];
+  const mapEntities: MapEntity[] = [];
 
-    const enrichedHospitals = hospitals.map((h) => {
-      const icu = icuList.find((i) => i.hospital_id === h.hospital_id);
-      const bed = bedList.find((b) => b.hospital_id === h.hospital_id);
-      const oxy = oxyList.filter((o) => o.hospital_id === h.hospital_id);
-      const oxyTotal = oxy.reduce((sum: number, o: any) => sum + (Number(o.available_capacity) || 0), 0);
-
-      return {
-        ...h,
-        available_icu_beds: icu ? icu.available_icu_beds : 4,
-        available_beds: bed ? bed.available_beds : 25,
-        oxygen_capacity: oxyTotal || 150
-      };
+  hospitals.forEach((hospital) => {
+    if (!isValidCoordinatePair(hospital.latitude, hospital.longitude)) return;
+    mapEntities.push({
+      id: hospital.hospital_id, name: hospital.hospital_name, type: 'hospital',
+      location: { lat: hospital.latitude, lng: hospital.longitude },
+      address: `${hospital.address}, ${hospital.district}`,
+      details: {
+        traumaLevel: hospital.trauma_center ? 'Trauma center' : 'General emergency care',
+        icuBeds: hospital.available_icu_beds, availableBeds: hospital.available_beds,
+        resourceFreshness: [
+          { resource: 'ICU beds', freshness: getResourceFreshness(hospital.icu_updated_at ?? null, 'icu'), updatedAt: hospital.icu_updated_at ?? null },
+          { resource: 'General beds', freshness: getResourceFreshness(hospital.beds_updated_at ?? null, 'beds'), updatedAt: hospital.beds_updated_at ?? null },
+          { resource: 'Oxygen', freshness: getResourceFreshness(hospital.oxygen_updated_at ?? null, 'oxygen'), updatedAt: hospital.oxygen_updated_at ?? null }
+        ]
+      }
     });
-
-    const enrichedBloodBanks = bloodBanks.map((bb) => {
-      const invs = bloodInvList.filter((b) => b.blood_bank_id === bb.blood_bank_id);
-      const stock: Record<string, number> = {};
-      invs.forEach((b: any) => {
-        stock[b.blood_group] = b.available_units || 0;
-      });
-      return {
-        ...bb,
-        blood_stock: Object.keys(stock).length > 0 ? stock : { 'O-': 22, 'O+': 68, 'A+': 45, 'B+': 38 }
-      };
+  });
+  bloodBanks.forEach((bank) => {
+    if (!isValidCoordinatePair(bank.latitude, bank.longitude)) return;
+    mapEntities.push({
+      id: bank.blood_bank_id, name: bank.blood_bank_name, type: 'blood_bank',
+      location: { lat: bank.latitude, lng: bank.longitude }, address: `${bank.address}, ${bank.district}`,
+      details: {
+        bloodStock: bank.blood_stock,
+        resourceFreshness: Object.entries(bank.blood_stock).map(([group]) => ({
+          resource: `${group} blood`, freshness: getResourceFreshness(bank.blood_updated_at?.[group] ?? null, 'blood'),
+          updatedAt: bank.blood_updated_at?.[group] ?? null
+        }))
+      }
     });
-
-    // Build map entities for Leaflet
-    const mapEntities: MapEntity[] = [];
-
-    enrichedHospitals.forEach((h) => {
-      mapEntities.push({
-        id: h.hospital_id,
-        name: h.hospital_name,
-        type: 'hospital',
-        location: { lat: h.latitude ?? 28.6139, lng: h.longitude ?? 77.2090 },
-        address: `${h.address}, ${h.district}`,
-        phone: h.phone || '+91-11-2345-6789',
-        details: {
-          traumaLevel: h.trauma_center ? 'Level 1 Trauma Center' : 'General Emergency Care',
-          icuBeds: h.available_icu_beds,
-          totalBeds: h.available_beds + 15,
-          availableBeds: h.available_beds,
-          ambulanceUnits: 2
-        }
-      });
+  });
+  ambulances.forEach((ambulance) => {
+    if (!isValidCoordinatePair(ambulance.current_latitude, ambulance.current_longitude)) return;
+    mapEntities.push({
+      id: ambulance.ambulance_id, name: `Unit ${ambulance.vehicle_number}`, type: 'ambulance',
+      location: { lat: ambulance.current_latitude, lng: ambulance.current_longitude },
+      address: 'Recorded vehicle coordinate • no live tracking',
+      details: {
+        vehicleId: ambulance.vehicle_number, status: ambulance.status,
+        resourceFreshness: [{ resource: 'Ambulance availability', freshness: getResourceFreshness(ambulance.updated_at ?? null, 'ambulance'), updatedAt: ambulance.updated_at ?? null }]
+      }
     });
+  });
 
-    enrichedBloodBanks.forEach((bb) => {
-      mapEntities.push({
-        id: bb.blood_bank_id,
-        name: bb.blood_bank_name,
-        type: 'blood_bank',
-        location: { lat: bb.latitude ?? 28.6250, lng: bb.longitude ?? 77.2180 },
-        address: `${bb.address}, ${bb.district}`,
-        phone: bb.phone || '+91-11-9876-5432',
-        details: {
-          tempCelsius: 3.8,
-          bloodStock: bb.blood_stock
-        }
-      });
-    });
-
-    ambulances.forEach((a) => {
-      mapEntities.push({
-        id: a.ambulance_id,
-        name: `Ambulance ${a.vehicle_number}`,
-        type: 'ambulance',
-        location: { lat: a.current_latitude ?? 28.6180, lng: a.current_longitude ?? 77.2120 },
-        address: `Stationed at District Hub (${a.ambulance_type} Unit)`,
-        phone: a.driver_phone || '+91-98765-43210',
-        details: {
-          vehicleId: a.vehicle_number,
-          driverName: a.driver_name,
-          driverPhone: a.driver_phone || undefined,
-          status: a.status
-        }
-      });
-    });
-
-    return {
-      hospitals: enrichedHospitals,
-      bloodBanks: enrichedBloodBanks,
-      ambulances,
-      mapEntities
-    };
-  } catch (err) {
-    console.error('getFacilityNetwork error:', err);
-    return {
-      hospitals: [],
-      bloodBanks: [],
-      ambulances: [],
-      mapEntities: []
-    };
-  }
+  return { hospitals, bloodBanks, ambulances, mapEntities };
 }
 
 /**
- * CLINICIAN APPROVAL & RESOURCE ALLOCATION ACTION:
- * Formal human approval workflow that:
- * 1. Confirms clinical urgency
- * 2. Assigns matched Hospital, Ambulance, and Blood Bank
- * 3. Persists to emergency_cases table
- * 4. Updates patient_requests.status to 'Assigned' (or 'Approved')
- * 5. Reserves hospital ICU/general bed & ambulance status
- * 6. Dispatches real-time push notification to the patient
+ * Applies a clinician review through one authenticated Supabase transaction.
+ * Bed reservation and ambulance assignment either commit together or roll back.
+ * Oxygen and blood availability are rechecked, but units are not reserved.
  */
 export async function approveAndAllocateEmergencyRequest(
   params: ClinicalApprovalParams
 ): Promise<{ success: boolean; emergencyCase?: EmergencyCaseTable; error?: string }> {
   const {
     requestId,
-    clinicianId,
-    clinicianName,
     confirmedUrgency,
     selectedHospitalId,
     selectedAmbulanceId,
-    selectedBloodBankId,
-    clinicalNotes
+    selectedBloodBankId
   } = params;
 
+  if (confirmedUrgency !== 'Low' && confirmedUrgency !== 'Medium'
+    && confirmedUrgency !== 'High' && confirmedUrgency !== 'Critical') {
+    return { success: false, error: 'A clinician must explicitly confirm urgency before recording an assignment.' };
+  }
+
   try {
-    const now = new Date().toISOString();
-
-    // 1. Fetch patient request details
-    const { data: reqData, error: reqErr } = await supabase
-      .from('patient_requests')
-      .select('*')
-      .eq('request_id', requestId)
-      .single();
-
-    if (reqErr || !reqData) {
-      return { success: false, error: 'Patient request record not found in database.' };
-    }
-
-    const patientReq = reqData as PatientRequestTable;
-
-    // 2. Create or Update emergency_cases record
-    const casePayload = {
-      request_id: requestId,
-      assigned_hospital_id: selectedHospitalId,
-      assigned_ambulance_id: selectedAmbulanceId || null,
-      assigned_blood_bank_id: selectedBloodBankId || null,
-      assigned_by: clinicianId,
-      priority: confirmedUrgency,
-      case_status: 'Assigned' as const,
-      ai_generated: false,
-      clinician_confirmed_urgency: confirmedUrgency,
-      confirmed_by: clinicianId,
-      confirmed_at: now,
-      confirmation_status: 'confirmed' as ConfirmationStatus,
-      notes: clinicalNotes || `Confirmed by Clinician ${clinicianName}. Urgency: ${confirmedUrgency}.`,
-      updated_at: now
-    };
-
-    // Check if emergency_cases entry already exists for this request
-    const { data: existingCase } = await supabase
-      .from('emergency_cases')
-      .select('case_id')
-      .eq('request_id', requestId)
-      .maybeSingle();
-
-    let savedCase: EmergencyCaseTable | null = null;
-
-    if (existingCase?.case_id) {
-      const { data: updated, error: updateErr } = await supabase
-        .from('emergency_cases')
-        .update(casePayload)
-        .eq('case_id', existingCase.case_id)
-        .select()
-        .single();
-
-      if (updateErr) throw new Error(updateErr.message);
-      savedCase = updated as EmergencyCaseTable;
-    } else {
-      const { data: inserted, error: insertErr } = await supabase
-        .from('emergency_cases')
-        .insert([{ ...casePayload, created_at: now }])
-        .select()
-        .single();
-
-      if (insertErr) throw new Error(insertErr.message);
-      savedCase = inserted as EmergencyCaseTable;
-    }
-
-    // 3. Update patient_requests status to 'Assigned'
-    await supabase
-      .from('patient_requests')
-      .update({
-        status: 'Assigned',
-        notes: `Clinical Approval Granted by Dr. ${clinicianName}. Emergency triage urgency confirmed: ${confirmedUrgency}. Matched facility assigned.`,
-        updated_at: now
-      })
-      .eq('request_id', requestId);
-
-    // Also update local fallback for offline/instant state
-    await updateRequestStatus(requestId, 'Assigned', `Approved by Clinician ${clinicianName}`);
-
-    // 4. Update Ambulance status to 'Assigned' if allocated
-    if (selectedAmbulanceId) {
-      await supabase
-        .from('ambulances')
-        .update({
-          status: 'Assigned',
-          assigned_hospital: selectedHospitalId,
-          updated_at: now
-        })
-        .eq('ambulance_id', selectedAmbulanceId);
-    }
-
-    // 5. Reserve Bed / ICU capacity in Supabase
-    if (patientReq.needs_icu) {
-      const { data: icuData } = await supabase
-        .from('icu_inventory')
-        .select('*')
-        .eq('hospital_id', selectedHospitalId)
-        .maybeSingle();
-
-      if (icuData && icuData.available_icu_beds > 0) {
-        await supabase
-          .from('icu_inventory')
-          .update({
-            available_icu_beds: Math.max(0, icuData.available_icu_beds - 1),
-            reserved_icu_beds: (icuData.reserved_icu_beds || 0) + 1,
-            updated_at: now
-          })
-          .eq('icu_inventory_id', icuData.icu_inventory_id);
-      }
-    } else if (patientReq.needs_general_bed) {
-      const { data: bedData } = await supabase
-        .from('general_bed_inventory')
-        .select('*')
-        .eq('hospital_id', selectedHospitalId)
-        .maybeSingle();
-
-      if (bedData && bedData.available_beds > 0) {
-        await supabase
-          .from('general_bed_inventory')
-          .update({
-            available_beds: Math.max(0, bedData.available_beds - 1),
-            reserved_beds: (bedData.reserved_beds || 0) + 1,
-            updated_at: now
-          })
-          .eq('bed_inventory_id', bedData.bed_inventory_id);
-      }
-    }
-
-    // 6. Fetch hospital name for notification
-    const { data: hospitalRow } = await supabase
-      .from('hospitals')
-      .select('hospital_name')
-      .eq('hospital_id', selectedHospitalId)
-      .single();
-
-    const hospitalName = hospitalRow?.hospital_name || 'Emergency Medical Center';
-
-    // 7. Send Real-time Push Notification to Patient
-    if (patientReq.patient_id) {
-      await sendNotification(
-        patientReq.patient_id,
-        '🎉 Emergency Request Approved & Matched!',
-        `Your request has been validated by Clinician ${clinicianName}. Allocated to ${hospitalName}. Ambulance and bed reservation confirmed.`,
-        'Critical'
-      );
-    }
-
+    const { data, error } = await supabase.rpc('approve_emergency_request', {
+      p_request_id: requestId,
+      p_hospital_id: selectedHospitalId,
+      p_ambulance_id: selectedAmbulanceId || null,
+      p_blood_bank_id: selectedBloodBankId || null,
+      p_confirmed_urgency: confirmedUrgency
+    });
+    if (error) throw new Error(error.message);
+    const emergencyCase = (Array.isArray(data) ? data[0] : data) as EmergencyCaseTable | null;
+    if (!emergencyCase?.case_id) throw new Error('Approval completed without returning its emergency case. Refresh and verify the request.');
     return {
       success: true,
-      emergencyCase: savedCase as EmergencyCaseTable
+      emergencyCase
     };
   } catch (err: any) {
     console.error('approveAndAllocateEmergencyRequest error:', err);
@@ -339,25 +142,16 @@ export async function approveAndAllocateEmergencyRequest(
  */
 export async function rejectEmergencyRequest(
   requestId: string,
-  clinicianName: string,
   reason: string
-): Promise<boolean> {
+): Promise<void> {
   try {
-    const now = new Date().toISOString();
-
-    await supabase
-      .from('patient_requests')
-      .update({
-        status: 'Completed',
-        notes: `Reviewed & Closed by Clinician ${clinicianName}. Reason: ${reason}`,
-        updated_at: now
-      })
-      .eq('request_id', requestId);
-
-    await updateRequestStatus(requestId, 'Completed', `Closed: ${reason}`);
-    return true;
+    const { error } = await supabase.rpc('reject_emergency_request', {
+      p_request_id: requestId,
+      p_reason: reason.trim()
+    });
+    if (error) throw new Error(error.message);
   } catch (err) {
     console.error('rejectEmergencyRequest error:', err);
-    return false;
+    throw err;
   }
 }

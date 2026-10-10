@@ -29,6 +29,7 @@ export const SignupPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Hospital registration fields
   const [hospitalName, setHospitalName] = useState('');
@@ -50,6 +51,7 @@ export const SignupPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError(null);
+    setSuccessMessage(null);
     clearAuthError();
 
     if (!fullName.trim()) {
@@ -222,7 +224,15 @@ export const SignupPage: React.FC = () => {
         });
       }
     } catch (err: any) {
-      setLocalError(err.message || 'Registration failed. Please check inputs.');
+      const message = err.message || 'Registration failed. Please check inputs.';
+      if (message.includes('awaiting platform verification')) {
+        clearAuthError();
+        setSuccessMessage(message);
+        setPassword('');
+        setConfirmPassword('');
+      } else {
+        setLocalError(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -308,9 +318,18 @@ export const SignupPage: React.FC = () => {
                 );
               })}
             </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+              District coordinator, clinician reviewer, and hospital approver accounts are provisioned by an administrator and cannot be self-selected.
+            </p>
           </div>
 
           {/* Alert Message */}
+          {successMessage && (
+            <div className="bg-emerald-950/60 border border-emerald-800 text-emerald-200 p-3 rounded-xl text-xs" role="status">
+              <p className="font-bold">Provider registration received</p>
+              <p className="mt-1 text-[11px] text-emerald-300">{successMessage}</p>
+            </div>
+          )}
           {(localError || authError) && (
             <div className="bg-rose-950/80 border border-rose-800 text-rose-200 p-3 rounded-xl text-xs flex items-start gap-2.5 animate-in fade-in">
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />

@@ -15,7 +15,7 @@ import {
   Save
 } from 'lucide-react';
 import {
-  getAmbulanceProviders,
+  getAmbulanceProviderById,
   getAmbulances,
   createAmbulance,
   updateAmbulance
@@ -92,14 +92,14 @@ export const AmbulanceDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [providers, ambList, hospList] = await Promise.all([
-        getAmbulanceProviders(),
+      const [linkedProvider, ambList, hospList] = await Promise.all([
+        getAmbulanceProviderById(providerId),
         getAmbulances(providerId),
         getHospitals()
       ]);
 
-      const p = providers.find((pr) => pr.provider_id === providerId) || null;
-      setProvider(p);
+      if (!linkedProvider) throw new Error('Your ambulance provider link points to a provider record that does not exist. Contact an administrator to correct the account link.');
+      setProvider(linkedProvider);
       setAmbulances(ambList);
       setHospitals(hospList);
 

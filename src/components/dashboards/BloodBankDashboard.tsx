@@ -20,6 +20,8 @@ import {
 import { BloodBankTable, BloodInventoryTable, BloodGroup } from '../../types/database';
 import { subscribeToSupabaseRealtime } from '../../services/supabaseDataLayer';
 import { LoadingState, ErrorState } from '../common/EmptyState';
+import { getUsableBloodUnits, validateBloodStockCounts } from '../../services/bloodInventoryUtils';
+import { ResourceRiskAlertsPanel } from './ResourceRiskAlertsPanel';
 
 const ALL_BLOOD_GROUPS: BloodGroup[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
@@ -124,11 +126,12 @@ export const BloodBankDashboard: React.FC = () => {
       alert('Minimum threshold must be a non-negative number (>= 0).');
       return;
     }
-    if (reservedUnitsInput > availUnitsInput) {
-      alert(`Reserved units (${reservedUnitsInput}) cannot exceed Available units (${availUnitsInput}).`);
+    try {
+      validateBloodStockCounts({ available_units: availUnitsInput, reserved_units: reservedUnitsInput, expired_units: expiredUnitsInput });
+    } catch (validationError: any) {
+      alert(validationError.message);
       return;
     }
-
     setSaving(true);
     try {
       const restockedIso = lastRestockedInput ? new Date(lastRestockedInput).toISOString() : new Date().toISOString();
@@ -183,11 +186,12 @@ export const BloodBankDashboard: React.FC = () => {
       alert('All unit counts and thresholds must be non-negative (>= 0).');
       return;
     }
-    if (editReserved > editAvail) {
-      alert(`Reserved units (${editReserved}) cannot exceed Available units (${editAvail}).`);
+    try {
+      validateBloodStockCounts({ available_units: editAvail, reserved_units: editReserved, expired_units: editExpired });
+    } catch (validationError: any) {
+      alert(validationError.message);
       return;
     }
-
     setSavingEdit(true);
     try {
       const restockedIso = editLastRestocked ? new Date(editLastRestocked).toISOString() : new Date().toISOString();
@@ -216,9 +220,9 @@ export const BloodBankDashboard: React.FC = () => {
     }
   };
 
-  const totalAvailable = inventoryList.reduce((acc, curr) => acc + curr.available_units, 0);
+  const totalAvailable = inventoryList.reduce((acc, curr) => acc + getUsableBloodUnits(curr), 0);
   const totalReserved = inventoryList.reduce((acc, curr) => acc + curr.reserved_units, 0);
-  const criticalGroups = inventoryList.filter((i) => i.available_units <= i.minimum_threshold);
+  const criticalGroups = inventoryList.filter((i) => getUsableBloodUnits(i) <= i.minimum_threshold);
 
   return (
     <div className="min-h-[calc(100vh-5rem)] bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 space-y-6 rounded-2xl border border-slate-800 shadow-2xl">
@@ -254,7 +258,7 @@ export const BloodBankDashboard: React.FC = () => {
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-1">
-          <span className="text-xs text-slate-400 font-bold uppercase">Total Available Units</span>
+          <span className="text-xs text-slate-400 font-bold uppercase">Total Usable Units</span>
           <p className="text-2xl font-black text-emerald-400 font-mono">{totalAvailable} Units</p>
         </div>
 
@@ -270,6 +274,8 @@ export const BloodBankDashboard: React.FC = () => {
           </p>
         </div>
       </div>
+
+      <ResourceRiskAlertsPanel />
 
       {/* Main Grid: Form Panel & Inventory List */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -303,7 +309,7 @@ export const BloodBankDashboard: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-300">Available Units</label>
+                <label className="text-xs font-bold text-slate-300">On-hand Units</label>
                 <input
                   type="number"
                   min="0"
@@ -403,7 +409,8 @@ export const BloodBankDashboard: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {inventoryList.map((inv) => {
-                const isCritical = inv.available_units <= inv.minimum_threshold;
+                const usableUnits = getUsableBloodUnits(inv);
+                const isCritical = usableUnits <= inv.minimum_threshold;
                 const isEditing = editingInventoryId === inv.inventory_id;
 
                 if (isEditing) {
@@ -422,7 +429,7 @@ export const BloodBankDashboard: React.FC = () => {
                       <div className="space-y-2 text-xs">
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="block text-[11px] text-slate-400 font-bold">Available</label>
+                            <label className="block text-[11px] text-slate-400 font-bold">On-hand</label>
                             <input
                               type="number"
                               min="0"
@@ -538,9 +545,15 @@ export const BloodBankDashboard: React.FC = () => {
 
                     <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60">
                       <div>
-                        <span className="text-[10px] text-slate-400 block font-sans">Available</span>
+                        <span className="text-[10px] text-slate-400 block font-sans">On-hand</span>
                         <span className={`text-base font-black ${isCritical ? 'text-rose-400' : 'text-emerald-400'}`}>
                           {inv.available_units} units
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-sans">Usable (on-hand - reserved - expired)</span>
+                        <span className={`text-base font-black ${isCritical ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {usableUnits} units
                         </span>
                       </div>
                       <div>

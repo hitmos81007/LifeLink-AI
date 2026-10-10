@@ -64,7 +64,7 @@ export const OperationalQueueView: React.FC<OperationalQueueViewProps> = ({
       setQueueItems(items);
     } catch (err: any) {
       console.error('Fetch queue error:', err);
-      setError('Failed to load operational priority queue from database.');
+      setError(`Could not load the operational priority queue. ${err?.message || 'Check your access and connection, then retry.'}`);
     } finally {
       setLoading(false);
     }
@@ -165,7 +165,7 @@ export const OperationalQueueView: React.FC<OperationalQueueViewProps> = ({
           <div className="space-y-0.5">
             <span className="font-bold text-amber-300 block">Mandatory Human Confirmation</span>
             <p className="text-[11px] text-amber-200/80 leading-normal">
-              AI algorithms calculate operational feasibility only. Human operators MUST explicitly review and finalize provider assignments prior to dispatch.
+          Suggestions are advisory and require human review. This prototype does not dispatch providers or contact emergency services.
             </p>
           </div>
         </div>
@@ -183,7 +183,7 @@ export const OperationalQueueView: React.FC<OperationalQueueViewProps> = ({
           </div>
           <h3 className="text-sm font-bold text-white">No Pending Cases in Operational Queue</h3>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            All patient emergency requests have been reviewed or resolved. New incoming patient requests will appear here automatically in real-time.
+            No requests are visible in this queue right now. New records appear when they are created in Supabase and permitted by your role.
           </p>
         </div>
       ) : (
@@ -368,7 +368,7 @@ export const OperationalQueueView: React.FC<OperationalQueueViewProps> = ({
                       </div>
                     ) : (
                       <p className="text-[11px] text-slate-500 italic">
-                        {item.required_resources.needs_ambulance ? 'Dispatching unit...' : 'Transit not requested'}
+                        {item.required_resources.needs_ambulance ? 'No vehicle assignment recorded' : 'Transit not requested'}
                       </p>
                     )}
                   </div>
