@@ -263,7 +263,7 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-white text-sm">{h.hospital_name}</span>
                       <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-mono font-bold">
-                        {h.distance_km} km • ~{h.eta_minutes}m illustrative estimate
+                        {h.distance_km} km • ~{h.eta_minutes} min illustrative estimate
                       </span>
                     </div>
 
@@ -296,7 +296,7 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
                   <div key={a.ambulance_id} className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-xs space-y-0.5">
                     <div className="flex justify-between font-bold text-white">
                       <span>{a.vehicle_number}</span>
-                      <span className="text-emerald-400 font-mono">~{a.eta_minutes}m illustrative estimate</span>
+                      <span className="text-emerald-400 font-mono">~{a.eta_minutes} min illustrative estimate</span>
                     </div>
                     <p className="text-[11px] text-slate-400">{a.driver_name} ({a.ambulance_type})</p>
                   </div>
