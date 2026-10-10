@@ -72,8 +72,11 @@ describe('hospital bed inventory input validation', () => {
       reserved_beds: 0,
       available_beds: 17,
       minimum_beds: 2,
-      expected_updated_at: '2026-10-09T12:00:00'
+      expected_updated_at: '2026-10-09T12:00:00Z'
     })).rejects.toThrow('General-bed inventory changed since it was loaded. Refresh the dashboard and reapply your update.');
+    expect(rpcMock).toHaveBeenCalledWith('update_general_bed_inventory', expect.objectContaining({
+      p_expected_updated_at: '2026-10-09T12:00:00Z'
+    }));
   });
 
   it('saves ICU availability through the versioned database operation', async () => {

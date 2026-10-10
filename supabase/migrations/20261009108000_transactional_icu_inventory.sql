@@ -7,7 +7,7 @@ CREATE OR REPLACE FUNCTION public.update_icu_inventory(
   p_total_icu_beds INTEGER,
   p_available_icu_beds INTEGER,
   p_minimum_icu_beds INTEGER,
-  p_expected_updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL
+  p_expected_updated_at TIMESTAMPTZ DEFAULT NULL
 ) RETURNS public.icu_inventory
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -91,8 +91,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.update_icu_inventory(UUID, INTEGER, INTEGER, INTEGER, TIMESTAMP WITHOUT TIME ZONE) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.update_icu_inventory(UUID, INTEGER, INTEGER, INTEGER, TIMESTAMP WITHOUT TIME ZONE) TO authenticated;
+REVOKE ALL ON FUNCTION public.update_icu_inventory(UUID, INTEGER, INTEGER, INTEGER, TIMESTAMPTZ) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.update_icu_inventory(UUID, INTEGER, INTEGER, INTEGER, TIMESTAMPTZ) TO authenticated;
 
 DO $$
 DECLARE v_policy RECORD;
