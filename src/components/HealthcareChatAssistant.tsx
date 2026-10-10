@@ -158,21 +158,22 @@ Do not enter patient details or personal health information.`,
 
       const data = await response.json();
 
-      if (data.success && data.reply) {
-        setMessages(prev => [
-          ...prev,
-          {
-            id: `asst_${Date.now()}`,
-            sender: 'assistant',
-            text: data.reply,
-            capability: cap,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            model: data.model
-          }
-        ]);
-      } else {
-        throw new Error(data.error || 'Server returned invalid response');
-      }
+      const assistantText = data.success && typeof data.reply === 'string'
+        ? data.reply
+        : typeof data.error === 'string'
+          ? data.error
+          : 'The assistant could not complete this request. Please try again later.';
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `asst_${Date.now()}`,
+          sender: 'assistant',
+          text: assistantText,
+          capability: cap,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          model: data.model
+        }
+      ]);
     } catch (err: any) {
       console.error('Error sending message to /chat:', err);
       // Fail clearly; never fabricate an answer when the model endpoint is unavailable.
