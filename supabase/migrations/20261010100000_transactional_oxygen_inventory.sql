@@ -10,7 +10,7 @@ CREATE OR REPLACE FUNCTION public.save_oxygen_inventory(
   p_minimum_threshold NUMERIC,
   p_unit TEXT,
   p_oxygen_inventory_id UUID DEFAULT NULL,
-  p_expected_updated_at TIMESTAMPTZ DEFAULT NULL
+  p_expected_updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL
 ) RETURNS public.oxygen_inventory
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -69,7 +69,7 @@ BEGIN
       hospital_id, oxygen_type, total_capacity, available_capacity,
       minimum_threshold, unit, created_at, updated_at
     ) VALUES (
-      v_hospital_id, btrim(p_oxygen_type), p_total_capacity, p_available_capacity,
+      v_hospital_id, btrim(p_oxygen_type)::public.oxygen_type, p_total_capacity, p_available_capacity,
       p_minimum_threshold, btrim(p_unit), now(), now()
     ) RETURNING * INTO v_row;
   ELSE
@@ -91,7 +91,7 @@ BEGIN
     END IF;
     v_old := to_jsonb(v_row);
     UPDATE public.oxygen_inventory
-    SET oxygen_type = btrim(p_oxygen_type),
+    SET oxygen_type = btrim(p_oxygen_type)::public.oxygen_type,
         total_capacity = p_total_capacity,
         available_capacity = p_available_capacity,
         minimum_threshold = p_minimum_threshold,
@@ -115,8 +115,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.save_oxygen_inventory(UUID, TEXT, NUMERIC, NUMERIC, NUMERIC, TEXT, UUID, TIMESTAMPTZ) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.save_oxygen_inventory(UUID, TEXT, NUMERIC, NUMERIC, NUMERIC, TEXT, UUID, TIMESTAMPTZ) TO authenticated;
+REVOKE ALL ON FUNCTION public.save_oxygen_inventory(UUID, TEXT, NUMERIC, NUMERIC, NUMERIC, TEXT, UUID, TIMESTAMP WITHOUT TIME ZONE) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.save_oxygen_inventory(UUID, TEXT, NUMERIC, NUMERIC, NUMERIC, TEXT, UUID, TIMESTAMP WITHOUT TIME ZONE) TO authenticated;
 
 DO $$
 DECLARE v_policy RECORD;
