@@ -33,19 +33,19 @@ BEGIN
   -- The broad Tamil Nadu box screens obvious state mismatches; it is not a geocoder.
   IF EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_result->'hospitals') h
-    WHERE lower(btrim(COALESCE(h->>'state','')))='tamil nadu'
+    WHERE regexp_replace(lower(btrim(COALESCE(h->>'state',''))), '[^a-z]', '', 'g')='tamilnadu'
       AND h->>'latitude' IS NOT NULL
       AND ((h->>'latitude')::numeric NOT BETWEEN 7.5 AND 14.0
         OR (h->>'longitude')::numeric NOT BETWEEN 75.0 AND 81.0)
   ) OR EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_result->'blood_banks') b
-    WHERE lower(btrim(COALESCE(b->>'state','')))='tamil nadu'
+    WHERE regexp_replace(lower(btrim(COALESCE(b->>'state',''))), '[^a-z]', '', 'g')='tamilnadu'
       AND b->>'latitude' IS NOT NULL
       AND ((b->>'latitude')::numeric NOT BETWEEN 7.5 AND 14.0
         OR (b->>'longitude')::numeric NOT BETWEEN 75.0 AND 81.0)
   ) OR EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_result->'ambulance_providers') a
-    WHERE lower(btrim(COALESCE(a->>'state','')))='tamil nadu'
+    WHERE regexp_replace(lower(btrim(COALESCE(a->>'state',''))), '[^a-z]', '', 'g')='tamilnadu'
       AND a->>'approximate_latitude' IS NOT NULL
       AND ((a->>'approximate_latitude')::numeric NOT BETWEEN 7.5 AND 14.0
         OR (a->>'approximate_longitude')::numeric NOT BETWEEN 75.0 AND 81.0)

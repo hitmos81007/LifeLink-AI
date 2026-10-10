@@ -17,10 +17,10 @@ AS $$
         'state', h.state,
         -- These broad state bounds suppress clearly misplaced demo coordinates;
         -- they are not a geocoder or a precise Tamil Nadu boundary check.
-        'latitude', CASE WHEN lower(btrim(COALESCE(h.state, ''))) = 'tamil nadu'
+        'latitude', CASE WHEN regexp_replace(lower(btrim(COALESCE(h.state, ''))), '[^a-z]', '', 'g') = 'tamilnadu'
                               AND (h.latitude NOT BETWEEN 7.5 AND 14.0 OR h.longitude NOT BETWEEN 75.0 AND 81.0)
                          THEN NULL ELSE h.latitude END,
-        'longitude', CASE WHEN lower(btrim(COALESCE(h.state, ''))) = 'tamil nadu'
+        'longitude', CASE WHEN regexp_replace(lower(btrim(COALESCE(h.state, ''))), '[^a-z]', '', 'g') = 'tamilnadu'
                                AND (h.latitude NOT BETWEEN 7.5 AND 14.0 OR h.longitude NOT BETWEEN 75.0 AND 81.0)
                           THEN NULL ELSE h.longitude END,
         'phone', h.phone,
@@ -102,10 +102,10 @@ AS $$
         'address', b.address,
         'district', b.district,
         'state', b.state,
-        'latitude', CASE WHEN lower(btrim(COALESCE(b.state, ''))) = 'tamil nadu'
+        'latitude', CASE WHEN regexp_replace(lower(btrim(COALESCE(b.state, ''))), '[^a-z]', '', 'g') = 'tamilnadu'
                               AND (b.latitude NOT BETWEEN 7.5 AND 14.0 OR b.longitude NOT BETWEEN 75.0 AND 81.0)
                          THEN NULL ELSE b.latitude END,
-        'longitude', CASE WHEN lower(btrim(COALESCE(b.state, ''))) = 'tamil nadu'
+        'longitude', CASE WHEN regexp_replace(lower(btrim(COALESCE(b.state, ''))), '[^a-z]', '', 'g') = 'tamilnadu'
                                AND (b.latitude NOT BETWEEN 7.5 AND 14.0 OR b.longitude NOT BETWEEN 75.0 AND 81.0)
                           THEN NULL ELSE b.longitude END,
         'phone', b.phone,
@@ -142,10 +142,10 @@ AS $$
         'phone', p.phone,
         'available_units', fleet.available_units,
         'availability_status', CASE WHEN fleet.available_units > 0 THEN 'Available' ELSE 'Critical' END,
-        'approximate_latitude', CASE WHEN lower(btrim(COALESCE(p.state, ''))) = 'tamil nadu'
+        'approximate_latitude', CASE WHEN regexp_replace(lower(btrim(COALESCE(p.state, ''))), '[^a-z]', '', 'g') = 'tamilnadu'
                                           AND (fleet.approximate_latitude NOT BETWEEN 7.5 AND 14.0 OR fleet.approximate_longitude NOT BETWEEN 75.0 AND 81.0)
                                      THEN NULL ELSE fleet.approximate_latitude END,
-        'approximate_longitude', CASE WHEN lower(btrim(COALESCE(p.state, ''))) = 'tamil nadu'
+        'approximate_longitude', CASE WHEN regexp_replace(lower(btrim(COALESCE(p.state, ''))), '[^a-z]', '', 'g') = 'tamilnadu'
                                            AND (fleet.approximate_latitude NOT BETWEEN 7.5 AND 14.0 OR fleet.approximate_longitude NOT BETWEEN 75.0 AND 81.0)
                                       THEN NULL ELSE fleet.approximate_longitude END,
         'updated_at', fleet.updated_at
