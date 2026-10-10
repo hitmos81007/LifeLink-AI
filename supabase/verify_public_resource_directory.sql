@@ -19,6 +19,19 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_result->'hospitals') h
+    GROUP BY h->>'id' HAVING count(*) > 1
+  ) OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_result->'blood_banks') b
+    GROUP BY b->>'id' HAVING count(*) > 1
+  ) OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_result->'ambulance_providers') a
+    GROUP BY a->>'id' HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Public resource directory returned the same facility or provider more than once';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_result->'hospitals') h
     WHERE h ?| ARRAY['email','reserved_units','reserved_stock','minimum_threshold','minimum_stock','driver_name','driver_phone']
        OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(h->'oxygen','[]'::jsonb)) x WHERE x ?| ARRAY['minimum_threshold','reserved_units'])
        OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(h->'medicines','[]'::jsonb)) x WHERE x ?| ARRAY['manufacturer','expiry_date','reserved_stock','minimum_stock'])
