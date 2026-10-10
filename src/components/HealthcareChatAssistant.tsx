@@ -142,8 +142,8 @@ Do not enter patient details or personal health information.`,
     setIsLoading(true);
 
     try {
-      // Call backend POST /chat endpoint
-      const response = await fetch('/chat', {
+      // Vercel deploys this API route as a server-side function.
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
