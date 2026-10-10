@@ -48,8 +48,6 @@ function hospitalEntity(hospital: PublicHospital): MapEntity | null {
     phone: hospital.phone || undefined,
     details: {
       traumaLevel: `${hospital.hospital_type}${hospital.trauma_center ? ' · Trauma center' : ''}`,
-      icuBeds: hospital.icu_beds ?? undefined,
-      availableBeds: hospital.general_beds ?? undefined,
       hasCoordinates
     }
   };
@@ -64,10 +62,7 @@ function bloodBankEntity(bank: PublicBloodBank): MapEntity | null {
     location: hasCoordinates ? { lat: bank.latitude as number, lng: bank.longitude as number } : { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] },
     address: [bank.address, bank.district, bank.state].filter(Boolean).join(', '),
     phone: bank.phone || undefined,
-    details: {
-      bloodStock: Object.fromEntries(bank.stock.filter((stock) => stock.quantity != null).map((stock) => [stock.blood_group, stock.quantity as number])),
-      hasCoordinates
-    }
+    details: { hasCoordinates }
   };
 }
 
@@ -82,7 +77,7 @@ function ambulanceEntity(provider: PublicAmbulanceProvider): MapEntity | null {
       : { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] },
     address: `Approximate provider area, ${provider.district}, ${provider.state}`,
     phone: provider.phone || undefined,
-    details: { status: `${provider.available_units} available unit(s), recorded ${provider.updated_at || 'time unknown'}`, hasCoordinates }
+    details: { hasCoordinates }
   };
 }
 
@@ -101,7 +96,14 @@ function createResult(
     : null;
   return {
     id: `${entity.id}:${category}:${resourceLabel}`,
-    entity: distanceKm == null ? entity : { ...entity, details: { ...entity.details, distanceKm } },
+    entity: {
+      ...entity,
+      details: {
+        ...entity.details,
+        ...(distanceKm == null ? {} : { distanceKm }),
+        resourceFreshness: [{ resource: resourceLabel, freshness: getResourceFreshness(updatedAt, category), updatedAt, availability }]
+      }
+    },
     category,
     resourceLabel,
     quantity,
@@ -399,7 +401,7 @@ export const GoogleMapsEmergencyView: React.FC = () => {
                       <span className={`shrink-0 px-2 py-1 rounded-md text-[10px] font-extrabold ${shownStatus === 'Available' ? 'bg-emerald-950 text-emerald-300' : shownStatus === 'Critical' ? 'bg-rose-950 text-rose-300' : 'bg-amber-950 text-amber-300'}`}>{shownStatus}</span>
                     </span>
                     <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-slate-300">
-                      <span className="font-semibold">{result.resourceLabel}: <strong className="text-white">{result.quantity == null ? 'Unknown' : `${result.quantity} ${result.unit}`}</strong></span>
+                      <span className="font-semibold">{result.resourceLabel}: <strong className={result.freshness === 'Fresh' ? 'text-white' : 'text-amber-200'}>{result.quantity == null ? 'Unknown' : result.freshness === 'Fresh' ? `${result.quantity} ${result.unit}` : `${result.freshness === 'Stale' ? 'Last reported' : 'Unverified report'}: ${result.quantity} ${result.unit}`}</strong></span>
                       <span className="inline-flex items-center gap-1 text-slate-400"><Clock3 className="w-3 h-3" />{result.updatedAt ? new Date(result.updatedAt).toLocaleString() : 'Update time unknown'}</span>
                     </span>
                     <span className="flex items-center justify-between text-[11px]">

@@ -327,18 +327,18 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
           <p style="margin: 0 0 8px 0; font-size: 11px; color: #64748B;">${escapeHtml(entity.address)}</p>
       `;
 
-      if (entity.type === 'hospital') {
+      if (entity.type === 'hospital' && (entity.details.icuBeds != null || entity.details.traumaLevel != null || entity.details.availableBeds != null || entity.details.totalBeds != null)) {
         popupContent += `
           <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; padding: 6px 8px; font-size: 11px; margin-bottom: 6px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+            ${entity.details.icuBeds != null ? `<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
               <span><strong>ICU beds recorded:</strong></span> <span style="color: #16A34A; font-weight: bold;">${entity.details.icuBeds == null ? 'Not recorded' : escapeHtml(entity.details.icuBeds)}</span>
-            </div>
+            </div>` : ''}
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
               <span><strong>Trauma capability:</strong></span> <span>${entity.details.traumaLevel == null ? 'Not recorded' : escapeHtml(entity.details.traumaLevel)}</span>
             </div>
-            <div style="display: flex; justify-content: space-between;">
+            ${entity.details.availableBeds != null || entity.details.totalBeds != null ? `<div style="display: flex; justify-content: space-between;">
               <span><strong>Beds recorded (available / total):</strong></span> <span>${entity.details.availableBeds == null ? 'Not recorded' : escapeHtml(entity.details.availableBeds)} / ${entity.details.totalBeds == null ? 'Not recorded' : escapeHtml(entity.details.totalBeds)}</span>
-            </div>
+            </div>` : ''}
           </div>
         `;
         if (entity.details.oxygenStock?.length) {
@@ -365,7 +365,7 @@ export const LeafletEmergencyMap: React.FC<LeafletEmergencyMapProps> = ({
             <div style="font-size: 9px; color: #475569; margin-top: 4px;">Reported inventory only; units are not reserved and clinical suitability must be verified by qualified staff.</div>
           </div>
         `;
-      } else if (entity.type === 'ambulance') {
+      } else if (entity.type === 'ambulance' && (entity.details.vehicleId || entity.details.driverName || entity.details.status)) {
         popupContent += `
           <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px; padding: 6px 8px; font-size: 11px; margin-bottom: 6px;">
             ${entity.details.vehicleId ? `<div><strong>Vehicle:</strong> ${escapeHtml(entity.details.vehicleId)}</div>` : ''}
