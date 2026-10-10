@@ -32,16 +32,27 @@ ALTER TABLE public.ambulance_providers DROP CONSTRAINT IF EXISTS ambulance_provi
 ALTER TABLE public.ambulance_providers ADD CONSTRAINT ambulance_providers_verification_status_check
   CHECK (verification_status IN ('pending','active','suspended','revoked'));
 
--- Existing provider accounts have no recorded verification event, so they enter the
--- review queue too. Do not infer verification from the legacy Active label.
-UPDATE public.users SET status=false, account_status='pending', updated_at=now()
+-- Preserve existing active providers during this prototype rollout. New or already
+-- inactive provider accounts remain pending and cannot publish availability.
+UPDATE public.users
+SET account_status=CASE WHEN status IS TRUE THEN 'active' ELSE 'pending' END,
+    updated_at=now()
 WHERE role::text IN ('hospital_admin','blood_bank_admin','ambulance_admin');
-UPDATE public.hospitals h SET status='Inactive', verification_status='pending', updated_at=now()
-FROM public.users u WHERE u.hospital_id=h.hospital_id AND u.role::text='hospital_admin';
-UPDATE public.blood_banks b SET status='Inactive', verification_status='pending', updated_at=now()
-FROM public.users u WHERE u.blood_bank_id=b.blood_bank_id AND u.role::text='blood_bank_admin';
-UPDATE public.ambulance_providers a SET status='Inactive', verification_status='pending', updated_at=now()
-FROM public.users u WHERE u.ambulance_provider_id=a.provider_id AND u.role::text='ambulance_admin';
+UPDATE public.hospitals h
+SET verification_status=CASE WHEN h.status='Active' THEN 'active' ELSE 'pending' END,
+    updated_at=now()
+FROM public.users u
+WHERE u.hospital_id=h.hospital_id AND u.role::text='hospital_admin';
+UPDATE public.blood_banks b
+SET verification_status=CASE WHEN b.status='Active' THEN 'active' ELSE 'pending' END,
+    updated_at=now()
+FROM public.users u
+WHERE u.blood_bank_id=b.blood_bank_id AND u.role::text='blood_bank_admin';
+UPDATE public.ambulance_providers a
+SET verification_status=CASE WHEN a.status='Active' THEN 'active' ELSE 'pending' END,
+    updated_at=now()
+FROM public.users u
+WHERE u.ambulance_provider_id=a.provider_id AND u.role::text='ambulance_admin';
 
 CREATE TABLE IF NOT EXISTS public.provider_account_reviews (
   review_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -58,14 +69,14 @@ CREATE TABLE IF NOT EXISTS public.provider_account_reviews (
 ALTER TABLE public.provider_account_reviews ALTER COLUMN provider_id DROP NOT NULL;
 
 INSERT INTO public.provider_account_reviews(user_id,provider_kind,provider_id,action,reason,actor_id)
-SELECT u.user_id,'hospital',u.hospital_id,'pending','Existing provider account requires initial platform verification.',NULL
-FROM public.users u WHERE u.role::text='hospital_admin'
+SELECT u.user_id,'hospital',u.hospital_id,'pending','Existing inactive provider account requires platform review.',NULL
+FROM public.users u WHERE u.role::text='hospital_admin' AND u.status IS NOT TRUE
 UNION ALL
-SELECT u.user_id,'blood_bank',u.blood_bank_id,'pending','Existing provider account requires initial platform verification.',NULL
-FROM public.users u WHERE u.role::text='blood_bank_admin'
+SELECT u.user_id,'blood_bank',u.blood_bank_id,'pending','Existing inactive provider account requires platform review.',NULL
+FROM public.users u WHERE u.role::text='blood_bank_admin' AND u.status IS NOT TRUE
 UNION ALL
-SELECT u.user_id,'ambulance',u.ambulance_provider_id,'pending','Existing provider account requires initial platform verification.',NULL
-FROM public.users u WHERE u.role::text='ambulance_admin';
+SELECT u.user_id,'ambulance',u.ambulance_provider_id,'pending','Existing inactive provider account requires platform review.',NULL
+FROM public.users u WHERE u.role::text='ambulance_admin' AND u.status IS NOT TRUE;
 
 CREATE INDEX IF NOT EXISTS provider_account_reviews_user_created_idx
   ON public.provider_account_reviews(user_id, created_at DESC);
