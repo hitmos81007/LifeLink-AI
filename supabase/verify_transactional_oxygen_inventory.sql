@@ -1,6 +1,6 @@
 -- Read-only checks after migration 20261010100000.
 DO $$
-DECLARE v_fn regprocedure := 'public.save_oxygen_inventory(uuid,text,numeric,numeric,numeric,text,uuid,timestamp with time zone)'::regprocedure;
+DECLARE v_fn regprocedure := 'public.save_oxygen_inventory(uuid,text,numeric,numeric,numeric,text,uuid,timestamp without time zone)'::regprocedure;
 BEGIN
   IF NOT (SELECT prosecdef FROM pg_proc WHERE oid=v_fn) THEN
     RAISE EXCEPTION 'Oxygen inventory save RPC must be SECURITY DEFINER';
