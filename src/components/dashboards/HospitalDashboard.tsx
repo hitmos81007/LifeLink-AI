@@ -332,13 +332,15 @@ export const HospitalDashboard: React.FC = () => {
 
     setSavingEditOxy(true);
     try {
+      const currentOxygen = oxygenList.find((item) => item.oxygen_inventory_id === oxyId);
+      if (!currentOxygen) throw new Error('Refresh oxygen inventory before saving this change.');
       const updated = await updateOxygenInventoryItem(oxyId, {
         oxygen_type: editOxyType,
         total_capacity: editOxyTotal,
         available_capacity: editOxyAvail,
         minimum_threshold: editOxyMin,
         unit: editOxyUnit.trim()
-      });
+      }, currentOxygen.updated_at);
 
       if (!updated) {
         throw new Error('Supabase did not return the updated oxygen record.');

@@ -268,13 +268,13 @@ export async function addOxygenInventoryItem(item: {
   if (item.available_capacity > item.total_capacity) {
     throw new Error(`Available capacity (${item.available_capacity}) cannot exceed Total capacity (${item.total_capacity}).`);
   }
+  if (item.minimum_threshold > item.total_capacity) {
+    throw new Error('Minimum oxygen threshold cannot exceed total capacity.');
+  }
   if (!item.unit?.trim()) {
     throw new Error('Oxygen unit is required (e.g. Cylinders, Liters).');
   }
 
-  const now = new Date().toISOString();
-
-  // 1. Check if an existing record exists for this hospital_id and oxygen_type
   const { data: existing, error: queryErr } = await supabase
     .from('oxygen_inventory')
     .select('*')
@@ -287,51 +287,32 @@ export async function addOxygenInventoryItem(item: {
     throw new Error(`Failed to check existing oxygen inventory: ${queryErr.message}`);
   }
 
-  if (existing) {
-    // 2. Update existing record by its real primary key
-    const { data: updatedRow, error: updateErr } = await supabase
-      .from('oxygen_inventory')
-      .update({
-        total_capacity: item.total_capacity,
-        available_capacity: item.available_capacity,
-        minimum_threshold: item.minimum_threshold,
-        unit: item.unit.trim(),
-        updated_at: now
-      })
-      .eq('oxygen_inventory_id', existing.oxygen_inventory_id)
-      .select()
-      .single();
+  const { data: savedRow, error: saveErr } = await supabase.rpc('save_oxygen_inventory', {
+    p_hospital_id: item.hospital_id,
+    p_oxygen_type: item.oxygen_type,
+    p_total_capacity: item.total_capacity,
+    p_available_capacity: item.available_capacity,
+    p_minimum_threshold: item.minimum_threshold,
+    p_unit: item.unit.trim(),
+    p_oxygen_inventory_id: existing?.oxygen_inventory_id ?? null,
+    p_expected_updated_at: existing?.updated_at ?? null
+  });
 
-    if (updateErr || !updatedRow) {
-      console.error('[Supabase Error] Updating oxygen_inventory failed:', updateErr?.message);
-      throw new Error(`Failed to update oxygen inventory: ${updateErr?.message || 'No row returned'}`);
+  if (saveErr) {
+    if (saveErr.code === '40001') {
+      throw new Error('Oxygen inventory changed or was created by another user. Refresh and retry.');
     }
-
-    return updatedRow as OxygenInventoryTable;
+    console.error('[Supabase Error] save_oxygen_inventory failed:', saveErr.message);
+    throw new Error(`Failed to save oxygen inventory: ${saveErr.message}`);
   }
-
-  // 3. Insert new record without client-side fake string IDs
-  const { data: insertedRow, error: insertErr } = await supabase
-    .from('oxygen_inventory')
-    .insert([{
-      hospital_id: item.hospital_id,
-      oxygen_type: item.oxygen_type,
-      total_capacity: item.total_capacity,
-      available_capacity: item.available_capacity,
-      minimum_threshold: item.minimum_threshold,
-      unit: item.unit.trim(),
-      created_at: now,
-      updated_at: now
-    }])
-    .select()
-    .single();
-
-  if (insertErr || !insertedRow) {
-    console.error('[Supabase Error] Inserting oxygen_inventory failed:', insertErr?.message);
-    throw new Error(`Failed to insert oxygen inventory: ${insertErr?.message || 'No row returned'}`);
+  if (!savedRow || typeof savedRow !== 'object' || Array.isArray(savedRow)) {
+    throw new Error('Supabase did not return the saved oxygen inventory record.');
   }
-
-  return insertedRow as OxygenInventoryTable;
+  const inventory = savedRow as OxygenInventoryTable;
+  if (inventory.hospital_id !== item.hospital_id) {
+    throw new Error('The saved oxygen inventory does not match the assigned hospital. Refresh and retry.');
+  }
+  return inventory;
 }
 
 export async function updateOxygenInventoryItem(
@@ -342,7 +323,8 @@ export async function updateOxygenInventoryItem(
     available_capacity?: number;
     minimum_threshold?: number;
     unit?: string;
-  }
+  },
+  expectedUpdatedAt: string
 ): Promise<OxygenInventoryTable> {
   if (updates.total_capacity !== undefined && updates.total_capacity < 0) {
     throw new Error('Total capacity must be non-negative (>= 0).');
@@ -362,29 +344,41 @@ export async function updateOxygenInventoryItem(
       `Available capacity (${updates.available_capacity}) cannot exceed Total capacity (${updates.total_capacity}).`
     );
   }
-
-  const now = new Date().toISOString();
-  const payload = {
-    ...updates,
-    unit: updates.unit !== undefined ? updates.unit.trim() : undefined,
-    updated_at: now
-  };
-
-  const { data, error } = await supabase
-    .from('oxygen_inventory')
-    .update(payload)
-    .eq('oxygen_inventory_id', oxygenInventoryId)
-    .select()
-    .single();
-
-  if (error || !data) {
-    console.error('[Supabase Error] updateOxygenInventoryItem failed:', error?.message);
-    throw new Error(`Failed to update oxygen inventory: ${error?.message || 'No row returned'}`);
+  if (updates.total_capacity !== undefined && updates.minimum_threshold !== undefined
+      && updates.minimum_threshold > updates.total_capacity) {
+    throw new Error('Minimum oxygen threshold cannot exceed total capacity.');
   }
 
-  const updatedItem = data as OxygenInventoryTable;
+  if (updates.total_capacity === undefined || updates.available_capacity === undefined
+      || updates.minimum_threshold === undefined || updates.unit === undefined || !updates.oxygen_type) {
+    throw new Error('Oxygen type, capacities, minimum threshold and unit are required to save the inventory record.');
+  }
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    throw new Error('Refresh oxygen inventory before saving this change.');
+  }
 
-  return updatedItem;
+  const { data, error } = await supabase.rpc('save_oxygen_inventory', {
+    p_hospital_id: null,
+    p_oxygen_type: updates.oxygen_type,
+    p_total_capacity: updates.total_capacity,
+    p_available_capacity: updates.available_capacity,
+    p_minimum_threshold: updates.minimum_threshold,
+    p_unit: updates.unit.trim(),
+    p_oxygen_inventory_id: oxygenInventoryId,
+    p_expected_updated_at: expectedUpdatedAt
+  });
+
+  if (error) {
+    if (error.code === '40001') {
+      throw new Error('Oxygen inventory changed since it was loaded. Refresh and reapply your update.');
+    }
+    console.error('[Supabase Error] save_oxygen_inventory failed:', error.message);
+    throw new Error(`Failed to save oxygen inventory: ${error.message}`);
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Supabase did not return the saved oxygen inventory record.');
+  }
+  return data as OxygenInventoryTable;
 }
 
 // ============================================================================
