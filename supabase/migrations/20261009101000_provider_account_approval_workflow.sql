@@ -69,13 +69,13 @@ CREATE TABLE IF NOT EXISTS public.provider_account_reviews (
 ALTER TABLE public.provider_account_reviews ALTER COLUMN provider_id DROP NOT NULL;
 
 INSERT INTO public.provider_account_reviews(user_id,provider_kind,provider_id,action,reason,actor_id)
-SELECT u.user_id,'hospital',u.hospital_id,'pending','Existing inactive provider account requires platform review.',NULL
+SELECT u.user_id,'hospital',u.hospital_id,'pending','Existing inactive provider account requires platform review.',NULL::UUID
 FROM public.users u WHERE u.role::text='hospital_admin' AND u.status IS NOT TRUE
 UNION ALL
-SELECT u.user_id,'blood_bank',u.blood_bank_id,'pending','Existing inactive provider account requires platform review.',NULL
+SELECT u.user_id,'blood_bank',u.blood_bank_id,'pending','Existing inactive provider account requires platform review.',NULL::UUID
 FROM public.users u WHERE u.role::text='blood_bank_admin' AND u.status IS NOT TRUE
 UNION ALL
-SELECT u.user_id,'ambulance',u.ambulance_provider_id,'pending','Existing inactive provider account requires platform review.',NULL
+SELECT u.user_id,'ambulance',u.ambulance_provider_id,'pending','Existing inactive provider account requires platform review.',NULL::UUID
 FROM public.users u WHERE u.role::text='ambulance_admin' AND u.status IS NOT TRUE;
 
 CREATE INDEX IF NOT EXISTS provider_account_reviews_user_created_idx
