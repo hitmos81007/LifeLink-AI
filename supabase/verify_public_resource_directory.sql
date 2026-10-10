@@ -30,6 +30,29 @@ BEGIN
     RAISE EXCEPTION 'Public resource directory returned the same facility or provider more than once';
   END IF;
 
+  -- The broad Tamil Nadu box screens obvious state mismatches; it is not a geocoder.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_result->'hospitals') h
+    WHERE lower(btrim(COALESCE(h->>'state','')))='tamil nadu'
+      AND h->>'latitude' IS NOT NULL
+      AND ((h->>'latitude')::numeric NOT BETWEEN 7.5 AND 14.0
+        OR (h->>'longitude')::numeric NOT BETWEEN 75.0 AND 81.0)
+  ) OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_result->'blood_banks') b
+    WHERE lower(btrim(COALESCE(b->>'state','')))='tamil nadu'
+      AND b->>'latitude' IS NOT NULL
+      AND ((b->>'latitude')::numeric NOT BETWEEN 7.5 AND 14.0
+        OR (b->>'longitude')::numeric NOT BETWEEN 75.0 AND 81.0)
+  ) OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_result->'ambulance_providers') a
+    WHERE lower(btrim(COALESCE(a->>'state','')))='tamil nadu'
+      AND a->>'approximate_latitude' IS NOT NULL
+      AND ((a->>'approximate_latitude')::numeric NOT BETWEEN 7.5 AND 14.0
+        OR (a->>'approximate_longitude')::numeric NOT BETWEEN 75.0 AND 81.0)
+  ) THEN
+    RAISE EXCEPTION 'Public resource directory returned a Tamil Nadu location outside the configured coarse regional bounds';
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_result->'hospitals') h
     WHERE h ?| ARRAY['email','reserved_units','reserved_stock','minimum_threshold','minimum_stock','driver_name','driver_phone']
