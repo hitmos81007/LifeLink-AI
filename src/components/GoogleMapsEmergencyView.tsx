@@ -233,6 +233,13 @@ export const GoogleMapsEmergencyView: React.FC = () => {
     directory, category, bloodGroup, searchText, Math.max(0, minimumQuantity), location, radiusKm
   ) : [], [directory, category, bloodGroup, searchText, minimumQuantity, location, radiusKm]);
 
+  const unlocatedResultCount = useMemo(() => {
+    if (!directory || !location) return 0;
+    return buildResults(
+      directory, category, bloodGroup, searchText, Math.max(0, minimumQuantity), null, radiusKm
+    ).filter((result) => result.entity.details.hasCoordinates === false).length;
+  }, [directory, category, bloodGroup, searchText, minimumQuantity, location, radiusKm]);
+
   useEffect(() => {
     if (selectedResultId && !results.some((result) => result.id === selectedResultId)) {
       setSelectedResultId(null);
@@ -368,6 +375,7 @@ export const GoogleMapsEmergencyView: React.FC = () => {
             <span>{CATEGORY_LABELS[category]} results</span><span>{results.length}</span>
           </div>
           <p className="text-[11px] text-slate-500">Freshness shows when prototype data was updated; it does not confirm real-world availability. Distance breaks ties when a location is set. Stale or unknown records are never presented as confirmed.</p>
+          {location && unlocatedResultCount > 0 && <p role="status" className="rounded-lg border border-amber-800 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200">{unlocatedResultCount} matching resource {unlocatedResultCount === 1 ? 'record is' : 'records are'} omitted from nearby results because {unlocatedResultCount === 1 ? 'its location is' : 'their locations are'} unavailable or hidden for verification. Clear the location filter to view them without distance filtering.</p>}
 
           {loading ? (
             <div className="py-10 text-center text-sm text-slate-400">Loading current resource summaries…</div>
