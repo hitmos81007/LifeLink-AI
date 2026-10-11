@@ -52,6 +52,14 @@ export interface OperationalQueueItem {
     blood_group: string | null;
     needs_ambulance: boolean;
   };
+  requested_quantities: {
+    icu_beds: number | null;
+    general_beds: number | null;
+    oxygen_units: number | null;
+    blood_units: number | null;
+    ambulances: number | null;
+  };
+  needed_by: string | null;
 
   // Associated AI recommendation & assigned provider objects
   recommendation_id?: string | null;
@@ -308,6 +316,14 @@ export async function getOperationalQueue(): Promise<OperationalQueueItem[]> {
         blood_group: req.required_blood_group,
         needs_ambulance: req.needs_ambulance
       },
+      requested_quantities: {
+        icu_beds: req.requested_icu_beds ?? null,
+        general_beds: req.requested_general_beds ?? null,
+        oxygen_units: req.requested_oxygen_units ?? null,
+        blood_units: req.requested_blood_units ?? null,
+        ambulances: req.requested_ambulances ?? null
+      },
+      needed_by: req.needed_by ?? null,
 
       recommendation_id: null,
       assigned_hospital: assignedHospital,

@@ -62,6 +62,12 @@ const linkedRequest = {
   needs_blood: false,
   required_blood_group: null,
   needs_ambulance: true,
+  requested_icu_beds: 2,
+  requested_general_beds: 0,
+  requested_oxygen_units: 3,
+  requested_blood_units: 0,
+  requested_ambulances: 1,
+  needed_by: '2026-10-08T11:00:00.000Z',
   created_at: '2026-10-07T11:00:00.000Z'
 };
 
@@ -133,9 +139,42 @@ describe('operational queue database reads', () => {
         request_id: 'request-1',
         priority_tier: 'High',
         case_status: 'Open',
-        required_resources: { emergency_type: 'Cardiac Arrest', needs_icu: true }
+        required_resources: { emergency_type: 'Cardiac Arrest', needs_icu: true },
+        requested_quantities: {
+          icu_beds: 2,
+          general_beds: 0,
+          oxygen_units: 3,
+          blood_units: 0,
+          ambulances: 1
+        },
+        needed_by: '2026-10-08T11:00:00.000Z'
       }
     ]);
+  });
+
+  it('keeps quantities and deadline explicitly unknown for older request rows', async () => {
+    tableResponses.set('emergency_cases', { data: [confirmedCase], error: null });
+    const legacyRequest = {
+      ...linkedRequest,
+      requested_icu_beds: undefined,
+      requested_general_beds: undefined,
+      requested_oxygen_units: undefined,
+      requested_blood_units: undefined,
+      requested_ambulances: undefined,
+      needed_by: undefined
+    };
+    tableResponses.set('patient_requests', { data: [legacyRequest], error: null });
+
+    await expect(getOperationalQueue()).resolves.toMatchObject([{
+      requested_quantities: {
+        icu_beds: null,
+        general_beds: null,
+        oxygen_units: null,
+        blood_units: null,
+        ambulances: null
+      },
+      needed_by: null
+    }]);
   });
 
   it('loads every confirmed queue item across multiple bounded request batches', async () => {
