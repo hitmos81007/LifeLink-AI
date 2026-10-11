@@ -15,6 +15,7 @@ DECLARE
   v_actual_count INTEGER;
   v_mismatch_count INTEGER;
   v_out_of_range_count INTEGER;
+  v_unstaffed_count INTEGER;
   v_total_results INTEGER := 0;
 BEGIN
   FOR v_candidate IN
@@ -61,6 +62,21 @@ BEGIN
     FROM public.find_nearby_transfer_sources(v_resource_type, v_radius) actual
     WHERE actual.distance_km IS NULL OR actual.distance_km > v_radius;
 
+    SELECT count(*) INTO v_unstaffed_count
+    FROM public.find_nearby_transfer_sources(v_resource_type, v_radius) actual
+    WHERE NOT EXISTS (
+        SELECT 1 FROM public.users approver
+        WHERE approver.hospital_id=actual.source_hospital_id
+          AND approver.role::TEXT='hospital_approver'
+          AND approver.status IS TRUE
+      )
+      OR NOT EXISTS (
+        SELECT 1 FROM public.users source_admin
+        WHERE source_admin.hospital_id=actual.source_hospital_id
+          AND source_admin.role::TEXT='hospital_admin'
+          AND source_admin.status IS TRUE
+      );
+
     WITH expected AS (
       SELECT source_hospital_id, resource_type, resource_name, resource_identity,
         transferable_quantity, unit, distance_km
@@ -78,9 +94,9 @@ BEGIN
       (SELECT * FROM actual EXCEPT SELECT * FROM expected)
     ) differences;
 
-    IF v_expected_count <> v_actual_count OR v_mismatch_count <> 0 OR v_out_of_range_count <> 0 THEN
-      RAISE EXCEPTION 'Radius lookup mismatch for %: expected %, actual %, mismatches %, out-of-range %',
-        v_resource_type, v_expected_count, v_actual_count, v_mismatch_count, v_out_of_range_count;
+    IF v_expected_count <> v_actual_count OR v_mismatch_count <> 0 OR v_out_of_range_count <> 0 OR v_unstaffed_count <> 0 THEN
+      RAISE EXCEPTION 'Radius lookup mismatch for %: expected %, actual %, mismatches %, out-of-range %, unstaffed %',
+        v_resource_type, v_expected_count, v_actual_count, v_mismatch_count, v_out_of_range_count, v_unstaffed_count;
     END IF;
 
     v_total_results := v_total_results + v_actual_count;
@@ -99,7 +115,7 @@ BEGIN
     RAISE EXCEPTION 'No located donors were returned for any transferable resource within % km', v_radius;
   END IF;
 
-  RAISE NOTICE 'PASS: all four resource types match the unfiltered source list inside % km; no out-of-radius sources; invalid radius rejected; % sources checked.',
+  RAISE NOTICE 'PASS: all four resource types match the unfiltered source list inside % km; no out-of-radius or unstaffed sources; invalid radius rejected; % sources checked.',
     v_radius, v_total_results;
 END;
 $$;
