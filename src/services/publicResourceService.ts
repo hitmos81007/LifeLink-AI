@@ -53,7 +53,7 @@ export interface PublicAmbulanceProvider {
   district: string;
   state: string;
   phone: string | null;
-  available_units: number;
+  available_units: number | null;
   availability_status: 'Available' | 'Critical' | 'Unknown';
   approximate_latitude: number | null;
   approximate_longitude: number | null;
