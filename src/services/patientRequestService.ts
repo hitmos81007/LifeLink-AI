@@ -3,6 +3,40 @@ import { PatientRequestTable, EmergencyType, BloodGroup, SeverityLevel } from '.
 
 const PATIENT_REQUEST_PAGE_SIZE = 500;
 
+export interface PatientRequestQuantities {
+  icu_beds: number;
+  general_beds: number;
+  oxygen_units: number;
+  blood_units: number;
+  ambulances: number;
+}
+
+export function validatePatientRequestNeeds(input: {
+  needs: { icu: boolean; general_bed: boolean; oxygen: boolean; blood: boolean; ambulance: boolean };
+  quantities: PatientRequestQuantities;
+  neededBy: string;
+}, now = new Date()): void {
+  const fields: Array<[keyof PatientRequestQuantities, boolean, string]> = [
+    ['icu_beds', input.needs.icu, 'ICU beds'],
+    ['general_beds', input.needs.general_bed, 'general beds'],
+    ['oxygen_units', input.needs.oxygen, 'oxygen units'],
+    ['blood_units', input.needs.blood, 'blood units'],
+    ['ambulances', input.needs.ambulance, 'ambulances']
+  ];
+  for (const [field, selected, label] of fields) {
+    const quantity = input.quantities[field];
+    if (!Number.isSafeInteger(quantity) || quantity < 0 || quantity > 10000
+      || (selected && quantity < 1) || (!selected && quantity !== 0)) {
+      throw new Error(`Enter a whole ${label} quantity from 1 to 10,000 for each selected resource, and 0 for unselected resources.`);
+    }
+  }
+  const neededBy = new Date(input.neededBy);
+  if (!Number.isFinite(neededBy.getTime()) || neededBy <= now
+    || neededBy.getTime() > now.getTime() + 30 * 24 * 60 * 60 * 1000) {
+    throw new Error('Needed-by time must be in the future and within the next 30 days.');
+  }
+}
+
 export async function getPatientRequests(patientId?: string): Promise<PatientRequestTable[]> {
   const requests: PatientRequestTable[] = [];
   for (let from = 0; ; from += PATIENT_REQUEST_PAGE_SIZE) {
@@ -39,8 +73,24 @@ export async function createPatientEmergencyRequest(data: {
   needs_ambulance: boolean;
   severity: SeverityLevel;
   reported_severity?: SeverityLevel;
+  requested_quantities: PatientRequestQuantities;
+  needed_by: string;
   simulationLocation?: { latitude: number; longitude: number } | null;
 }): Promise<PatientRequestTable> {
+  validatePatientRequestNeeds({
+    needs: {
+      icu: data.needs_icu,
+      general_bed: data.needs_general_bed,
+      oxygen: data.needs_oxygen,
+      blood: data.needs_blood,
+      ambulance: data.needs_ambulance
+    },
+    quantities: data.requested_quantities,
+    neededBy: data.needed_by
+  });
+  if (data.needs_blood && !data.required_blood_group) {
+    throw new Error('Choose a blood group when blood is selected.');
+  }
   const reportedSev = data.reported_severity || data.severity;
   const simulationLocation = data.simulationLocation ?? null;
   if (simulationLocation && (
@@ -56,7 +106,7 @@ export async function createPatientEmergencyRequest(data: {
         longitude: Math.round(simulationLocation.longitude * 100) / 100
       }
     : null;
-  const { data: inserted, error } = await supabase.rpc('create_synthetic_patient_request_with_location', {
+  const { data: inserted, error } = await supabase.rpc('create_synthetic_patient_request_with_needs', {
     p_emergency_type: data.emergency_type,
     p_required_blood_group: data.needs_blood ? data.required_blood_group || null : null,
     p_needs_blood: data.needs_blood,
@@ -66,7 +116,13 @@ export async function createPatientEmergencyRequest(data: {
     p_needs_ambulance: data.needs_ambulance,
     p_reported_severity: reportedSev,
     p_latitude: coarseLocation?.latitude ?? null,
-    p_longitude: coarseLocation?.longitude ?? null
+    p_longitude: coarseLocation?.longitude ?? null,
+    p_requested_icu_beds: data.requested_quantities.icu_beds,
+    p_requested_general_beds: data.requested_quantities.general_beds,
+    p_requested_oxygen_units: data.requested_quantities.oxygen_units,
+    p_requested_blood_units: data.requested_quantities.blood_units,
+    p_requested_ambulances: data.requested_quantities.ambulances,
+    p_needed_by: new Date(data.needed_by).toISOString()
   });
 
   if (error) {

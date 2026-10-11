@@ -287,6 +287,12 @@ export interface PatientRequestTable {
   needs_general_bed: boolean;
   needs_oxygen: boolean;
   needs_ambulance: boolean;
+  requested_icu_beds?: number;
+  requested_general_beds?: number;
+  requested_oxygen_units?: number;
+  requested_blood_units?: number;
+  requested_ambulances?: number;
+  needed_by?: string | null;
   reported_severity?: SeverityLevel; // Patient-reported severity (GAP-12)
   severity: SeverityLevel; // Legacy backward compatibility
   latitude: number | null;
