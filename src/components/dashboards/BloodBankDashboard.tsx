@@ -38,6 +38,8 @@ export const BloodBankDashboard: React.FC = () => {
 
   // Add / Edit Form State
   const [selectedGroup, setSelectedGroup] = useState<BloodGroup>('A+');
+  const [formInventoryId, setFormInventoryId] = useState<string | null>(null);
+  const [formInventoryVersion, setFormInventoryVersion] = useState<string | null>(null);
   const [availUnitsInput, setAvailUnitsInput] = useState<number>(50);
   const [reservedUnitsInput, setReservedUnitsInput] = useState<number>(5);
   const [expiredUnitsInput, setExpiredUnitsInput] = useState<number>(0);
@@ -49,6 +51,7 @@ export const BloodBankDashboard: React.FC = () => {
 
   // Inline Quick Edit state for inventory items
   const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null);
+  const [editingInventoryVersion, setEditingInventoryVersion] = useState<string | null>(null);
   const [editAvail, setEditAvail] = useState<number>(0);
   const [editReserved, setEditReserved] = useState<number>(0);
   const [editExpired, setEditExpired] = useState<number>(0);
@@ -135,6 +138,11 @@ export const BloodBankDashboard: React.FC = () => {
     setSaving(true);
     try {
       const restockedIso = lastRestockedInput ? new Date(lastRestockedInput).toISOString() : new Date().toISOString();
+      const existing = inventoryList.find((item) => item.blood_group === selectedGroup);
+      if (existing && (formInventoryId !== existing.inventory_id || !formInventoryVersion)) {
+        alert('This blood group already has stock. Load its current values before editing.');
+        return;
+      }
       const savedRow = await saveBloodInventoryItem({
         blood_bank_id: bloodBankId,
         blood_group: selectedGroup,
@@ -142,7 +150,9 @@ export const BloodBankDashboard: React.FC = () => {
         reserved_units: reservedUnitsInput,
         expired_units: expiredUnitsInput,
         minimum_threshold: minThresholdInput,
-        last_restocked: restockedIso
+        last_restocked: restockedIso,
+        inventory_id: formInventoryId,
+        expected_updated_at: formInventoryVersion
       });
 
       if (!savedRow || !savedRow.inventory_id) {
@@ -150,6 +160,8 @@ export const BloodBankDashboard: React.FC = () => {
       }
 
       triggerToast(`Saved inventory stock for ${selectedGroup} successfully!`);
+      setFormInventoryId(savedRow.inventory_id);
+      setFormInventoryVersion(savedRow.updated_at);
       await fetchData();
     } catch (err: any) {
       console.error('Save Blood Inventory Error:', err);
@@ -161,6 +173,8 @@ export const BloodBankDashboard: React.FC = () => {
 
   const handleSelectForForm = (inv: BloodInventoryTable) => {
     setSelectedGroup(inv.blood_group);
+    setFormInventoryId(inv.inventory_id);
+    setFormInventoryVersion(inv.updated_at);
     setAvailUnitsInput(inv.available_units);
     setReservedUnitsInput(inv.reserved_units);
     setExpiredUnitsInput(inv.expired_units);
@@ -172,6 +186,7 @@ export const BloodBankDashboard: React.FC = () => {
 
   const startInlineEdit = (inv: BloodInventoryTable) => {
     setEditingInventoryId(inv.inventory_id);
+    setEditingInventoryVersion(inv.updated_at);
     setEditAvail(inv.available_units);
     setEditReserved(inv.reserved_units);
     setEditExpired(inv.expired_units);
@@ -202,7 +217,9 @@ export const BloodBankDashboard: React.FC = () => {
         reserved_units: editReserved,
         expired_units: editExpired,
         minimum_threshold: editMinThreshold,
-        last_restocked: restockedIso
+        last_restocked: restockedIso,
+        inventory_id: inv.inventory_id,
+        expected_updated_at: editingInventoryVersion || inv.updated_at
       });
 
       if (!savedRow || !savedRow.inventory_id) {
@@ -211,6 +228,7 @@ export const BloodBankDashboard: React.FC = () => {
 
       triggerToast(`Updated ${inv.blood_group} inventory!`);
       setEditingInventoryId(null);
+      setEditingInventoryVersion(null);
       await fetchData();
     } catch (err: any) {
       console.error('Inline Edit Blood Inventory Error:', err);
@@ -296,7 +314,16 @@ export const BloodBankDashboard: React.FC = () => {
               <label className="text-xs font-bold text-slate-300">Blood Group</label>
               <select
                 value={selectedGroup}
-                onChange={(e) => setSelectedGroup(e.target.value as BloodGroup)}
+                onChange={(e) => {
+                  const group = e.target.value as BloodGroup;
+                  const existing = inventoryList.find((item) => item.blood_group === group);
+                  if (existing) handleSelectForForm(existing);
+                  else {
+                    setSelectedGroup(group);
+                    setFormInventoryId(null);
+                    setFormInventoryVersion(null);
+                  }
+                }}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white font-mono font-bold focus:ring-2 focus:ring-red-500"
               >
                 {ALL_BLOOD_GROUPS.map((bg) => (
