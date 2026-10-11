@@ -234,7 +234,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
                   {/* Stock vs Demand Metric Comparison */}
                   <div className="grid grid-cols-3 gap-2 bg-slate-900/90 p-3 rounded-xl border border-slate-800/80 text-center">
                     <div>
-                      <div className="text-[9px] text-slate-400 font-mono font-bold uppercase">Current Stock</div>
+                      <div className="text-[9px] text-slate-400 font-mono font-bold uppercase">Usable Beds</div>
                       <div className="text-sm font-black text-white pt-0.5">{item.current_quantity}</div>
                     </div>
 
@@ -251,7 +251,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
 
                   {/* Deficit / Reserve Status */}
                   <div className="flex items-center justify-between text-xs px-1">
-                    <span className="text-slate-400 text-[11px]">24h Stock Gap:</span>
+                    <span className="text-slate-400 text-[11px]">24h Usable Bed Gap:</span>
                     {isDeficit ? (
                       <span className="text-rose-400 font-bold font-mono">
                         Shortage of -{deficit24h} unit(s)
