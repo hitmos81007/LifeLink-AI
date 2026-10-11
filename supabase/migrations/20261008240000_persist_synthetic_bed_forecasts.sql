@@ -104,8 +104,8 @@ BEGIN
   ),
   paired AS (
     SELECT d.hospital_id, d.resource_type,
-      MAX(d.predicted_demand) FILTER (WHERE d.forecast_horizon_days = 1) AS demand_24h,
-      MAX(d.predicted_demand) FILTER (WHERE d.forecast_horizon_days = 7) AS demand_7d,
+      MAX(d.predicted_demand::NUMERIC) FILTER (WHERE d.forecast_horizon_days = 1) AS demand_24h,
+      MAX(d.predicted_demand::NUMERIC) FILTER (WHERE d.forecast_horizon_days = 7) AS demand_7d,
       MAX(d.request_count::BIGINT) FILTER (WHERE d.forecast_horizon_days = 1) AS request_count,
       MAX(d.method_version) FILTER (WHERE d.forecast_horizon_days = 1) AS method,
       MAX(d.created_at) AS generated
@@ -117,8 +117,8 @@ BEGIN
   SELECT p.hospital_id, h.hospital_name::TEXT, h.district::TEXT, p.resource_type,
     CASE WHEN p.resource_type = 'ICU Beds' THEN i.available_icu_beds::NUMERIC
          ELSE b.available_beds::NUMERIC END,
-    p.demand_24h, p.demand_7d, p.request_count, p.method,
-    p.generated::DATE, p.generated
+    p.demand_24h::NUMERIC, p.demand_7d::NUMERIC, p.request_count::BIGINT, p.method::TEXT,
+    p.generated::DATE, p.generated::TIMESTAMPTZ
   FROM paired p
   JOIN public.hospitals h ON h.hospital_id = p.hospital_id AND h.status::text = 'Active'
   LEFT JOIN public.icu_inventory i ON i.hospital_id = p.hospital_id AND p.resource_type = 'ICU Beds'
