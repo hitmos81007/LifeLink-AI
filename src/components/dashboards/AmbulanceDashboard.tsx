@@ -188,6 +188,10 @@ export const AmbulanceDashboard: React.FC = () => {
         return;
       }
     }
+    if ((parsedLat === null) !== (parsedLng === null)) {
+      alert('Enter both latitude and longitude, or leave both empty.');
+      return;
+    }
 
     setRegistering(true);
     try {
@@ -248,6 +252,10 @@ export const AmbulanceDashboard: React.FC = () => {
         return;
       }
     }
+    if ((parsedLat === null) !== (parsedLng === null)) {
+      alert('Enter both latitude and longitude, or leave both empty.');
+      return;
+    }
 
     setUpdating(true);
     try {
@@ -259,7 +267,7 @@ export const AmbulanceDashboard: React.FC = () => {
         current_latitude: parsedLat,
         current_longitude: parsedLng,
         assigned_hospital: editAssignedHospital || null
-      });
+      }, selectedAmbulance.updated_at);
 
       if (!updated || !updated.ambulance_id) {
         throw new Error('Supabase did not return the updated ambulance record.');
