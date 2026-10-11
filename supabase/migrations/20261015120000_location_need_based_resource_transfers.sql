@@ -9,8 +9,6 @@ RETURNS TABLE (
   hospital_code TEXT,
   district TEXT,
   state TEXT,
-  latitude NUMERIC,
-  longitude NUMERIC,
   distance_km NUMERIC,
   resource_type TEXT,
   resource_name TEXT,
@@ -82,7 +80,7 @@ BEGIN
     FROM donors d JOIN public.hospitals h ON h.hospital_id=d.hospital_id
     WHERE h.status='Active' AND h.hospital_id<>v_user.hospital_id AND d.quantity>0
   )
-  SELECT l.hospital_id,l.hospital_name,l.hospital_code,l.district,l.state,l.latitude,l.longitude,l.distance,
+  SELECT l.hospital_id,l.hospital_name,l.hospital_code,l.district,l.state,l.distance,
     l.resource_type,l.resource_name,l.identity,l.quantity,l.unit
   FROM located l
   ORDER BY l.distance NULLS LAST,l.state,l.district,l.hospital_name
