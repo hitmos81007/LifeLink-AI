@@ -44,27 +44,27 @@ export async function saveBloodInventoryItem(data: {
   expired_units: number;
   minimum_threshold: number;
   last_restocked?: string | null;
+  inventory_id?: string | null;
+  expected_updated_at?: string | null;
 }): Promise<BloodInventoryTable> {
   validateBloodStockCounts(data);
   if (!Number.isSafeInteger(data.minimum_threshold) || data.minimum_threshold < 0) {
     throw new Error('minimum_threshold must be a non-negative whole number.');
   }
-  const now = new Date().toISOString();
-  const restockedDate = data.last_restocked || now;
-  const { data: savedRow, error: saveErr } = await supabase
-    .from('blood_inventory')
-    .upsert({
-      blood_bank_id: data.blood_bank_id,
-      blood_group: data.blood_group,
-      available_units: data.available_units,
-      reserved_units: data.reserved_units,
-      expired_units: data.expired_units,
-      minimum_threshold: data.minimum_threshold,
-      last_restocked: restockedDate,
-      updated_at: now
-    }, { onConflict: 'blood_bank_id,blood_group' })
-    .select()
-    .single();
+  if (Boolean(data.inventory_id) !== Boolean(data.expected_updated_at)) {
+    throw new Error('Inventory edits require the record version; refresh and retry.');
+  }
+  const { data: savedRow, error: saveErr } = await supabase.rpc('save_blood_inventory', {
+    p_blood_bank_id: data.blood_bank_id,
+    p_blood_group: data.blood_group,
+    p_available_units: data.available_units,
+    p_reserved_units: data.reserved_units,
+    p_expired_units: data.expired_units,
+    p_minimum_threshold: data.minimum_threshold,
+    p_last_restocked: data.last_restocked || null,
+    p_inventory_id: data.inventory_id || null,
+    p_expected_updated_at: data.expected_updated_at || null
+  });
 
   if (saveErr || !savedRow) {
     throw new Error(`Failed to save blood inventory: ${saveErr?.message || 'Database error'}`);
@@ -72,7 +72,7 @@ export async function saveBloodInventoryItem(data: {
 
   return {
     ...savedRow,
-    available_units: savedRow.available_units ?? savedRow.available_quantity ?? data.available_units
+    available_units: savedRow.available_units ?? data.available_units
   } as BloodInventoryTable;
 }
 
@@ -96,30 +96,24 @@ export async function updateBloodInventoryUnits(
     throw new Error('Reserved and expired units together cannot exceed on-hand units.');
   }
 
-  const now = new Date().toISOString();
-
-  const { data: updatedRow, error: updateErr } = await supabase
+  const { data: current, error: readError } = await supabase
     .from('blood_inventory')
-    .update({
-      available_units: availableUnits,
-      reserved_units: reservedUnits,
-      expired_units: expiredUnits,
-      last_restocked: now,
-      updated_at: now
-    })
+    .select('blood_bank_id,blood_group,minimum_threshold,last_restocked,updated_at')
     .eq('inventory_id', inventoryId)
-    .select()
     .maybeSingle();
-
-  if (updateErr || !updatedRow) {
-    throw new Error(`Failed to update blood inventory: ${updateErr?.message || 'Database error'}`);
+  if (readError || !current) {
+    throw new Error(`Failed to read blood inventory before updating: ${readError?.message || 'Record not found'}`);
   }
-
-  const normalized: BloodInventoryTable = {
-    ...updatedRow,
-    available_units: updatedRow.available_units ?? updatedRow.available_quantity ?? availableUnits
-  };
-
-  return normalized;
+  return saveBloodInventoryItem({
+    blood_bank_id: current.blood_bank_id,
+    blood_group: current.blood_group,
+    available_units: availableUnits,
+    reserved_units: reservedUnits,
+    expired_units: expiredUnits,
+    minimum_threshold: current.minimum_threshold,
+    last_restocked: new Date().toISOString(),
+    inventory_id: inventoryId,
+    expected_updated_at: current.updated_at
+  });
 }
 

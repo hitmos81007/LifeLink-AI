@@ -12,9 +12,9 @@ import { saveBloodInventoryItem } from '../services/bloodService';
 
 function makeBuilder() {
   const query: Record<string, any> = {};
-  query.upsert = vi.fn(() => query);
   query.select = vi.fn(() => query);
-  query.single = vi.fn(() => Promise.resolve(response.value));
+  query.eq = vi.fn(() => query);
+  query.maybeSingle = vi.fn(() => Promise.resolve(response.value));
   builder.value = query;
   return query;
 }
@@ -26,27 +26,35 @@ const validInventory = {
 
 describe('blood inventory saves', () => {
   beforeEach(() => {
-    response.value = { data: { inventory_id: 'inventory-1', ...validInventory }, error: null };
+    response.value = { data: { inventory_id: 'inventory-1', ...validInventory, updated_at: '2026-10-10T10:00:00' }, error: null };
     fromMock.mockImplementation(() => makeBuilder());
-    rpcMock.mockResolvedValue({ data: 0, error: null });
+    rpcMock.mockResolvedValue({ data: { inventory_id: 'inventory-1', ...validInventory }, error: null });
   });
   afterEach(() => vi.clearAllMocks());
 
-  it('uses a conflict-key upsert to keep one aggregate row per bank and blood group', async () => {
+  it('uses the transactional RPC for a new blood group', async () => {
     await expect(saveBloodInventoryItem(validInventory)).resolves.toMatchObject({
       inventory_id: 'inventory-1', blood_group: 'O-', available_units: 20
     });
-    expect(builder.value.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      blood_bank_id: 'bank-1', blood_group: 'O-', available_units: 20
-    }), { onConflict: 'blood_bank_id,blood_group' });
-    expect(builder.value.select).toHaveBeenCalledOnce();
-    expect(builder.value.single).toHaveBeenCalledOnce();
+    expect(rpcMock).toHaveBeenCalledWith('save_blood_inventory', expect.objectContaining({
+      p_blood_bank_id: 'bank-1', p_blood_group: 'O-', p_available_units: 20,
+      p_inventory_id: null, p_expected_updated_at: null
+    }));
   });
 
   it('reports a database conflict or validation failure without claiming the stock was saved', async () => {
-    response.value = { data: null, error: { message: 'unique index unavailable' } };
-    await expect(saveBloodInventoryItem(validInventory)).rejects.toThrow('Failed to save blood inventory: unique index unavailable');
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'inventory changed' } });
+    await expect(saveBloodInventoryItem(validInventory)).rejects.toThrow('Failed to save blood inventory: inventory changed');
     await expect(saveBloodInventoryItem({ ...validInventory, reserved_units: 20, expired_units: 1 }))
       .rejects.toThrow('Reserved and expired units together cannot exceed on-hand units.');
+  });
+
+  it('sends an inventory id with its version for optimistic updates', async () => {
+    await saveBloodInventoryItem({
+      ...validInventory, inventory_id: 'inventory-1', expected_updated_at: '2026-10-10T10:00:00'
+    });
+    expect(rpcMock).toHaveBeenCalledWith('save_blood_inventory', expect.objectContaining({
+      p_inventory_id: 'inventory-1', p_expected_updated_at: '2026-10-10T10:00:00'
+    }));
   });
 });
