@@ -59,6 +59,7 @@ export const PatientDashboard: React.FC = () => {
   const [needsGeneralBed, setNeedsGeneralBed] = useState(false);
   const [needsOxygen, setNeedsOxygen] = useState(true);
   const [needsAmbulance, setNeedsAmbulance] = useState(true);
+  const hasSelectedResource = needsIcu || needsGeneralBed || needsOxygen || needsBlood || needsAmbulance;
   const [severity, setSeverity] = useState<SeverityLevel>('Critical');
   const [requestedQuantities, setRequestedQuantities] = useState({
     icu_beds: 1, general_beds: 1, oxygen_units: 1, blood_units: 1, ambulances: 1
@@ -580,6 +581,7 @@ export const PatientDashboard: React.FC = () => {
                   <span>Needs Blood</span>
                 </label>
               </div>
+              {!hasSelectedResource && <p className="text-[11px] text-amber-300">Select at least one resource to save this scenario.</p>}
               <p className="text-[11px] text-slate-500">Scenario quantities are aggregate counts only. Blood and oxygen are generic units; no treatment, dose, reservation, or dispatch is requested.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {needsIcu && <QuantityInput label="ICU beds" value={requestedQuantities.icu_beds} onChange={(value) => setRequestedQuantities((current) => ({ ...current, icu_beds: value }))} />}
@@ -652,7 +654,7 @@ export const PatientDashboard: React.FC = () => {
 
             <button
               type="submit"
-              disabled={submitting || !syntheticScenarioConfirmed}
+              disabled={submitting || !syntheticScenarioConfirmed || !hasSelectedResource}
               className="w-full py-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black tracking-wider uppercase cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30"
             >
               <Send className="w-4 h-4" />

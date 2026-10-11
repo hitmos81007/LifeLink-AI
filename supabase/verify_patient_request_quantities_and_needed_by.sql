@@ -59,6 +59,7 @@ BEGIN
      OR position('p_needed_by <= now()' IN v_definition)=0
      OR position('interval ''30 days''' IN v_definition)=0
      OR position('p_requested_oxygen_units' IN v_definition)=0
+     OR position('Select at least one resource' IN v_definition)=0
      OR position('patient_request_needs_review' IN v_definition)=0
      OR position('No emergency service was contacted' IN v_definition)=0 THEN
     RAISE EXCEPTION 'Request RPC is missing role, quantity, time-window, or human-review safeguards';

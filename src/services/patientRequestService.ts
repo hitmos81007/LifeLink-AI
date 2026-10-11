@@ -16,6 +16,10 @@ export function validatePatientRequestNeeds(input: {
   quantities: PatientRequestQuantities;
   neededBy: string;
 }, now = new Date()): void {
+  if (!input.needs.icu && !input.needs.general_bed && !input.needs.oxygen
+    && !input.needs.blood && !input.needs.ambulance) {
+    throw new Error('Select at least one resource for the synthetic scenario.');
+  }
   const fields: Array<[keyof PatientRequestQuantities, boolean, string]> = [
     ['icu_beds', input.needs.icu, 'ICU beds'],
     ['general_beds', input.needs.general_bed, 'general beds'],
