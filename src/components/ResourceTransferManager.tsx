@@ -24,6 +24,7 @@ import {
 } from '../services/resourceTransferService';
 import { ResourceTransferTable, TransferResourceType, TransferStatus } from '../types/database';
 import { subscribeToSupabaseRealtime } from '../services/supabaseDataLayer';
+import { getResourceFreshness, ResourceCategory } from '../services/resourceFreshness';
 import { LoadingState, ErrorState } from './common/EmptyState';
 
 interface ResourceTransferManagerProps {
@@ -50,6 +51,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
   const [formError, setFormError] = useState<string | null>(null);
 
   const [resourceType, setResourceType] = useState<TransferResourceType>('ICU Beds');
+  const [maxDistanceKm, setMaxDistanceKm] = useState<number | null>(100);
   const [nearbySources, setNearbySources] = useState<NearbyTransferSource[]>([]);
   const [selectedSourceKey, setSelectedSourceKey] = useState<string>('');
   const [stockLoading, setStockLoading] = useState(false);
@@ -102,7 +104,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
     setSelectedSourceKey('');
     const loadStock = async () => {
       try {
-        const options = await getNearbyTransferSources(resourceType);
+        const options = await getNearbyTransferSources(resourceType, maxDistanceKm);
         if (!cancelled) {
           setNearbySources(options);
           setSelectedSourceKey((current) => options.some((option) => option.key === current) ? current : (options[0]?.key || ''));
@@ -115,9 +117,19 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
     };
     void loadStock();
     return () => { cancelled = true; };
-  }, [showCreateModal, userHospitalId, resourceType]);
+  }, [showCreateModal, userHospitalId, resourceType, maxDistanceKm]);
 
   const selectedStock = nearbySources.find((option) => option.key === selectedSourceKey);
+  const freshnessCategory: ResourceCategory = resourceType === 'ICU Beds'
+    ? 'icu'
+    : resourceType === 'General Beds'
+      ? 'beds'
+      : resourceType === 'Oxygen'
+        ? 'oxygen'
+        : 'medicine';
+  const selectedStockFreshness = selectedStock
+    ? getResourceFreshness(selectedStock.last_reported_at, freshnessCategory)
+    : 'Unknown';
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -301,6 +313,22 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                   <option value="Medicine">Medicine</option>
                 </select>
               </div>
+              <div className="space-y-1">
+                <label className="text-slate-300 font-bold block" htmlFor="transfer-max-distance">Maximum straight-line distance</label>
+                <select
+                  id="transfer-max-distance"
+                  value={maxDistanceKm ?? ''}
+                  onChange={(e) => setMaxDistanceKm(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="25">Within 25 km</option>
+                  <option value="50">Within 50 km</option>
+                  <option value="100">Within 100 km</option>
+                  <option value="250">Within 250 km</option>
+                  <option value="">Any distance</option>
+                </select>
+                <p className="text-[10px] text-slate-500">Distance is estimated in a straight line from your assigned hospital, not by road.</p>
+              </div>
               {/* Nearby donor facility */}
               <div className="space-y-1">
                 <label className="text-slate-300 font-bold block">Nearby facilities with transferable stock</label>
@@ -318,19 +346,29 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                   >
                     {nearbySources.map((candidate) => (
                       <option key={candidate.key} value={candidate.key}>
-                        {candidate.hospital_name} · {candidate.district} · {candidate.distance_km == null ? 'distance unavailable' : `${candidate.distance_km} km straight-line`} · {candidate.resource_name}: {candidate.transferable_quantity} {candidate.unit} releasable
+                        {candidate.hospital_name} · {candidate.district} · {candidate.distance_km == null ? 'distance unavailable' : `${candidate.distance_km} km`} · {candidate.resource_name}: {candidate.transferable_quantity} {candidate.unit} · {getResourceFreshness(candidate.last_reported_at, freshnessCategory)}
                       </option>
                     ))}
                   </select>
                 )}
-                <p className="text-[10px] text-slate-500">Your assigned hospital receives the request. Facilities with coordinates are listed nearest first by straight-line distance.</p>
+                <p className="text-[10px] text-slate-500">Your assigned hospital receives the request. Facilities are ranked nearest first; records without coordinates appear only when Any distance is selected.</p>
               </div>
 
               <div className="space-y-1">
                 <label className="text-slate-300 font-bold block">Selected item</label>
                 <div className="w-full bg-slate-950 border border-slate-800 text-slate-200 p-2.5 rounded-xl min-h-10">{selectedStock?.resource_name || 'No nearby item available'}</div>
               </div>
-              {stockLoading ? <p className="text-[10px] text-slate-400">Checking nearby stock…</p> : stockError ? <p className="text-[10px] text-rose-300">{stockError}</p> : selectedStock ? <p className="text-[10px] text-amber-300">Your hospital is receiving. Up to {selectedStock.transferable_quantity} {selectedStock.unit} is releasable at this donor. This is a synthetic prototype record.</p> : <p className="text-[10px] text-amber-300">No unique inventory item has stock available above its protected minimum.</p>}
+              {stockLoading ? <p className="text-[10px] text-slate-400">Checking nearby stock…</p> : stockError ? <p className="text-[10px] text-rose-300">{stockError}</p> : selectedStock ? (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-amber-300">Your hospital is receiving. Up to {selectedStock.transferable_quantity} {selectedStock.unit} is releasable at this donor. This is a synthetic prototype record.</p>
+                  <p className={`text-[10px] ${selectedStockFreshness === 'Fresh' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                    Inventory report: {selectedStockFreshness} · {selectedStock.last_reported_at ? new Date(selectedStock.last_reported_at).toLocaleString() : 'update time unknown'}
+                  </p>
+                  {selectedStockFreshness !== 'Fresh' && (
+                    <p className="text-[10px] text-amber-200">Confirm the donor’s current stock directly before approval. The database rechecks its recorded quantity but cannot verify physical inventory.</p>
+                  )}
+                </div>
+              ) : <p className="text-[10px] text-amber-300">No unique inventory item has stock above its protected minimum within the selected distance range.</p>}
 
               {/* Quantity */}
               <div className="space-y-1">

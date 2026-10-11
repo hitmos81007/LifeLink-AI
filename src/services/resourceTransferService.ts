@@ -36,6 +36,7 @@ export interface NearbyTransferSource {
   resource_identity: Record<string, string | null>;
   transferable_quantity: number;
   unit: string;
+  last_reported_at: string | null;
   key: string;
 }
 
@@ -45,10 +46,12 @@ export interface NearbyTransferSource {
  * receiving hospital and ranks facilities by straight-line distance.
  */
 export async function getNearbyTransferSources(
-  resourceType: TransferResourceType
+  resourceType: TransferResourceType,
+  maxDistanceKm: number | null = 100
 ): Promise<NearbyTransferSource[]> {
   const { data, error } = await supabase.rpc('find_nearby_transfer_sources', {
-    p_resource_type: resourceType
+    p_resource_type: resourceType,
+    p_max_distance_km: maxDistanceKm
   });
   if (error) throw new Error(`Could not find nearby transfer sources: ${error.message}`);
   return ((data || []) as Omit<NearbyTransferSource, 'key'>[]).map((source) => ({
