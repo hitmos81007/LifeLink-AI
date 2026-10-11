@@ -355,7 +355,7 @@ export const GoogleMapsEmergencyView: React.FC = () => {
               <form onSubmit={useManualLocation} className="grid grid-cols-[1fr_1fr_auto] gap-2">
                 <input aria-label="Latitude" inputMode="decimal" placeholder="Latitude" value={manualLat} onChange={(event) => setManualLat(event.target.value)} className="min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-white" />
                 <input aria-label="Longitude" inputMode="decimal" placeholder="Longitude" value={manualLng} onChange={(event) => setManualLng(event.target.value)} className="min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-white" />
-                <button type="submit" className="px-2.5 py-2 bg-blue-700 hover:bg-blue-600 rounded-lg text-xs font-bold">Apply</button>
+                <button type="submit" className="px-2.5 py-2 bg-blue-700 hover:bg-blue-600 rounded-lg text-xs font-bold">Set location</button>
               </form>
             )}
             {locationError && <p role="alert" className="text-[11px] text-amber-300">{locationError}</p>}
