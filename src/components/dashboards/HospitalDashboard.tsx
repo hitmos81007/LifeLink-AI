@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   getHospitalById,
+  updateHospitalLocation,
   getICUInventory,
   updateICUInventory,
   getGeneralBedInventory,
@@ -48,6 +49,9 @@ export const HospitalDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [locationLatitudeInput, setLocationLatitudeInput] = useState('');
+  const [locationLongitudeInput, setLocationLongitudeInput] = useState('');
+  const [savingLocation, setSavingLocation] = useState(false);
 
   const hospitalId = userProfile?.hospital_id;
 
@@ -125,6 +129,8 @@ export const HospitalDashboard: React.FC = () => {
       ]);
 
       setHospital(hosp);
+      setLocationLatitudeInput(hosp?.latitude == null ? '' : String(hosp.latitude));
+      setLocationLongitudeInput(hosp?.longitude == null ? '' : String(hosp.longitude));
       setIcuInv(icu);
       if (icu) {
         setIcuAvailInput(icu.available_icu_beds);
@@ -195,6 +201,28 @@ export const HospitalDashboard: React.FC = () => {
       alert('Failed to save ICU inventory: ' + err.message);
     } finally {
       setSavingIcu(false);
+    }
+  };
+
+  const handleSaveLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hospitalId || !hospital) return;
+    setSavingLocation(true);
+    try {
+      const savedHospital = await updateHospitalLocation(
+        hospitalId,
+        locationLatitudeInput,
+        locationLongitudeInput,
+        hospital.updated_at
+      );
+      setHospital(savedHospital);
+      setLocationLatitudeInput(savedHospital.latitude == null ? '' : String(savedHospital.latitude));
+      setLocationLongitudeInput(savedHospital.longitude == null ? '' : String(savedHospital.longitude));
+      triggerToast('Hospital location updated in Supabase.');
+    } catch (err: any) {
+      alert('Failed to update hospital location: ' + (err.message || 'Database error'));
+    } finally {
+      setSavingLocation(false);
     }
   };
 
@@ -462,6 +490,54 @@ export const HospitalDashboard: React.FC = () => {
       ) : (
         <div className="space-y-8">
           <ResourceRiskAlertsPanel />
+
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+            <div>
+              <h2 className="text-base font-black text-white">Facility Location</h2>
+              <p className="text-xs text-slate-400 mt-1">
+                These coordinates determine straight-line distance in nearby resource matching. Enter this hospital’s verified map point; the update is saved to Supabase and audited.
+              </p>
+            </div>
+            <form onSubmit={handleSaveLocation} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+              <label className="space-y-1 text-xs text-slate-300">
+                <span>Latitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  min="-90"
+                  max="90"
+                  value={locationLatitudeInput}
+                  onChange={(event) => setLocationLatitudeInput(event.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="e.g. 13.08"
+                />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                <span>Longitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  min="-180"
+                  max="180"
+                  value={locationLongitudeInput}
+                  onChange={(event) => setLocationLongitudeInput(event.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="e.g. 80.10"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={savingLocation || loading}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 px-4 py-2 text-sm font-bold text-white"
+              >
+                {savingLocation ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Location
+              </button>
+            </form>
+            <p className="text-[11px] text-slate-500">
+              Leave both fields blank to remove the map point. A location edit changes nearby ranking and requires fresh verification before relying on the results.
+            </p>
+          </section>
 
           {/* Hospital Emergency Queue Notice (Batch 1 Safety Boundary) */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-3">

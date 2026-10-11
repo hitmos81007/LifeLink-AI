@@ -83,6 +83,56 @@ export async function getHospitalById(id: string): Promise<HospitalTable | null>
   return (data as HospitalTable) || null;
 }
 
+/**
+ * Correct the assigned hospital's coordinates through the audited,
+ * hospital-admin-scoped Supabase operation.
+ */
+export async function updateHospitalLocation(
+  hospitalId: string,
+  latitudeInput: string,
+  longitudeInput: string,
+  expectedUpdatedAt: string | null | undefined
+): Promise<HospitalTable> {
+  if (!hospitalId.trim()) throw new Error('A hospital ID is required.');
+  if (!expectedUpdatedAt) throw new Error('Refresh the hospital profile before updating its location.');
+
+  const latitudeText = latitudeInput.trim();
+  const longitudeText = longitudeInput.trim();
+  if ((latitudeText === '') !== (longitudeText === '')) {
+    throw new Error('Enter both latitude and longitude, or leave both blank.');
+  }
+
+  let latitude: number | null = null;
+  let longitude: number | null = null;
+  if (latitudeText !== '') {
+    latitude = Number(latitudeText);
+    longitude = Number(longitudeText);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+      || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      throw new Error('Enter valid coordinates: latitude from -90 to 90 and longitude from -180 to 180.');
+    }
+  }
+
+  const { data, error } = await supabase.rpc('update_hospital_location', {
+    p_hospital_id: hospitalId,
+    p_latitude: latitude,
+    p_longitude: longitude,
+    p_expected_updated_at: expectedUpdatedAt
+  });
+
+  if (error?.code === '40001') {
+    throw new Error('Hospital profile changed since it was loaded. Refresh and reapply your location update.');
+  }
+  if (error) throw new Error(`Failed to update hospital location: ${error.message}`);
+
+  const saved = (Array.isArray(data) ? data[0] : data) as HospitalTable | null;
+  if (!saved?.hospital_id || saved.hospital_id !== hospitalId
+    || saved.latitude !== latitude || saved.longitude !== longitude) {
+    throw new Error('Supabase did not return the verified hospital location record.');
+  }
+  return saved;
+}
+
 // ============================================================================
 // ICU INVENTORY
 // ============================================================================
