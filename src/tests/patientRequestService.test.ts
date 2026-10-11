@@ -95,6 +95,19 @@ describe('synthetic patient request creation', () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a scenario with no selected resources', async () => {
+    await expect(createPatientEmergencyRequest({
+      ...scenario,
+      needs_blood: false,
+      needs_icu: false,
+      needs_general_bed: false,
+      needs_oxygen: false,
+      needs_ambulance: false,
+      requested_quantities: { icu_beds: 0, general_beds: 0, oxygen_units: 0, blood_units: 0, ambulances: 0 }
+    })).rejects.toThrow(/select at least one resource/i);
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
   it('validates the needed-by window and integer quantities before calling Supabase', async () => {
     const now = new Date('2026-10-11T12:00:00.000Z');
     const valid = {

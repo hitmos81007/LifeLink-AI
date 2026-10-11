@@ -10,28 +10,25 @@ ALTER TABLE public.patient_requests
   ADD COLUMN IF NOT EXISTS requested_ambulances integer,
   ADD COLUMN IF NOT EXISTS needed_by timestamptz;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.patient_requests'::regclass AND conname='patient_requests_synthetic_need_quantities_check') THEN
-    ALTER TABLE public.patient_requests ADD CONSTRAINT patient_requests_synthetic_need_quantities_check
-      CHECK (
-        needed_by IS NULL OR (
-          data_origin = 'synthetic'
-          AND requested_icu_beds IS NOT NULL AND requested_icu_beds >= 0
-          AND requested_general_beds IS NOT NULL AND requested_general_beds >= 0
-          AND requested_oxygen_units IS NOT NULL AND requested_oxygen_units >= 0
-          AND requested_blood_units IS NOT NULL AND requested_blood_units >= 0
-          AND requested_ambulances IS NOT NULL AND requested_ambulances >= 0
-          AND needs_icu = (requested_icu_beds > 0)
-          AND needs_general_bed = (requested_general_beds > 0)
-          AND needs_oxygen = (requested_oxygen_units > 0)
-          AND needs_blood = (requested_blood_units > 0)
-          AND needs_ambulance = (requested_ambulances > 0)
-        )
-      ) NOT VALID;
-  END IF;
-END;
-$$;
+ALTER TABLE public.patient_requests
+  DROP CONSTRAINT IF EXISTS patient_requests_synthetic_need_quantities_check;
+ALTER TABLE public.patient_requests ADD CONSTRAINT patient_requests_synthetic_need_quantities_check
+  CHECK (
+    needed_by IS NULL OR (
+      data_origin = 'synthetic'
+      AND requested_icu_beds IS NOT NULL AND requested_icu_beds >= 0
+      AND requested_general_beds IS NOT NULL AND requested_general_beds >= 0
+      AND requested_oxygen_units IS NOT NULL AND requested_oxygen_units >= 0
+      AND requested_blood_units IS NOT NULL AND requested_blood_units >= 0
+      AND requested_ambulances IS NOT NULL AND requested_ambulances >= 0
+      AND (needs_icu OR needs_general_bed OR needs_oxygen OR needs_blood OR needs_ambulance)
+      AND needs_icu = (requested_icu_beds > 0)
+      AND needs_general_bed = (requested_general_beds > 0)
+      AND needs_oxygen = (requested_oxygen_units > 0)
+      AND needs_blood = (requested_blood_units > 0)
+      AND needs_ambulance = (requested_ambulances > 0)
+    )
+  ) NOT VALID;
 
 ALTER TABLE public.patient_requests VALIDATE CONSTRAINT patient_requests_synthetic_need_quantities_check;
 DO $$
@@ -102,6 +99,9 @@ BEGIN
   IF p_needs_blood IS NULL OR p_needs_icu IS NULL OR p_needs_general_bed IS NULL
      OR p_needs_oxygen IS NULL OR p_needs_ambulance IS NULL THEN
     RAISE EXCEPTION 'All synthetic scenario resource flags must be provided';
+  END IF;
+  IF NOT (p_needs_icu OR p_needs_general_bed OR p_needs_oxygen OR p_needs_blood OR p_needs_ambulance) THEN
+    RAISE EXCEPTION 'Select at least one resource for the synthetic scenario';
   END IF;
   IF p_needs_blood AND (p_required_blood_group IS NULL OR p_required_blood_group NOT IN ('A+','A-','B+','B-','AB+','AB-','O+','O-')) THEN
     RAISE EXCEPTION 'Select a valid blood group for this synthetic scenario';
