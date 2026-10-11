@@ -42,8 +42,12 @@ BEGIN
      OR position('v_user.hospital_id' IN v_request_definition)=0
      OR position('v_available-v_minimum<p_quantity' IN v_request_definition)=0
      OR position('p_resource_identity' IN v_request_definition)=0
+     OR position('INSERT INTO public.icu_inventory' IN v_request_definition)=0
+     OR position('INSERT INTO public.general_bed_inventory' IN v_request_definition)=0
+     OR position('INSERT INTO public.oxygen_inventory' IN v_request_definition)=0
+     OR position('INSERT INTO public.medicine_inventory' IN v_request_definition)=0
      OR position('INSERT INTO public.resource_transfer_events' IN v_request_definition)=0 THEN
-    RAISE EXCEPTION 'Inbound requests must derive the receiver from auth, validate source stock and identity, and record the initial event';
+    RAISE EXCEPTION 'Inbound requests must derive the receiver from auth, validate source stock and identity, seed a missing receiver catalog row, and record the initial event';
   END IF;
 
   v_transition_definition:=pg_get_functiondef(v_transition);

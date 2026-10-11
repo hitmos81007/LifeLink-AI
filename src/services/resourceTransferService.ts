@@ -30,8 +30,6 @@ export interface NearbyTransferSource {
   hospital_code: string;
   district: string;
   state: string;
-  latitude: number | null;
-  longitude: number | null;
   distance_km: number | null;
   resource_type: TransferResourceType;
   resource_name: string;
