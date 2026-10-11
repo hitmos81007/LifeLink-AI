@@ -109,7 +109,7 @@ WHERE NOT EXISTS (
 INSERT INTO public.ambulances (
   ambulance_id,provider_id,vehicle_number,ambulance_type,driver_name,driver_phone,current_latitude,current_longitude,status,assigned_hospital,created_at,updated_at
 )
-SELECT v.ambulance_id,p.provider_id,v.vehicle_number,v.ambulance_type::public.ambulance_type,'Synthetic demo crew',NULL,v.latitude,v.longitude,'Available',NULL,now(),now()
+SELECT v.ambulance_id::UUID,p.provider_id,v.vehicle_number,v.ambulance_type::public.ambulance_type,'Synthetic demo crew',NULL,v.latitude,v.longitude,'Available',NULL,now(),now()
 FROM (VALUES
   ('a4000000-0000-4000-8000-000000000001','LL-DEMO-EMS-01','LL-DEMO-UNIT-01','ALS',28.6150,77.2070),
   ('a4000000-0000-4000-8000-000000000002','LL-DEMO-EMS-01','LL-DEMO-UNIT-02','BLS',28.6200,77.2140),

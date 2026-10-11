@@ -137,10 +137,10 @@ BEGIN
       assigned_ambulance_id = p_ambulance_id,
       assigned_blood_bank_id = p_blood_bank_id,
       assigned_by = v_user.user_id,
-      priority = p_confirmed_urgency,
+      priority = p_confirmed_urgency::public.severity_level,
       case_status = 'Assigned',
       ai_generated = false,
-      clinician_confirmed_urgency = p_confirmed_urgency,
+      clinician_confirmed_urgency = p_confirmed_urgency::public.severity_level,
       confirmed_by = v_user.user_id,
       confirmed_at = now(),
       confirmation_status = 'confirmed',
@@ -155,8 +155,8 @@ BEGIN
       confirmed_at, confirmation_status, notes, created_at, updated_at
     ) VALUES (
       p_request_id, p_hospital_id, p_ambulance_id, p_blood_bank_id,
-      v_user.user_id, p_confirmed_urgency, 'Assigned', false,
-      p_confirmed_urgency, v_user.user_id, now(), 'confirmed',
+      v_user.user_id, p_confirmed_urgency::public.severity_level, 'Assigned', false,
+      p_confirmed_urgency::public.severity_level, v_user.user_id, now(), 'confirmed',
       NULL, now(), now()
     ) RETURNING * INTO v_case;
   END IF;
@@ -217,7 +217,7 @@ BEGIN
     END IF;
     UPDATE public.emergency_cases SET
       case_status = 'Cancelled', ai_generated = false,
-      clinician_confirmed_urgency = v_urgency, confirmed_by = v_user.user_id,
+      clinician_confirmed_urgency = v_urgency::public.severity_level, confirmed_by = v_user.user_id,
       confirmed_at = now(), confirmation_status = 'rejected',
       notes = trim(p_reason), updated_at = now()
       WHERE case_id = v_old_case.case_id RETURNING * INTO v_case;
@@ -227,8 +227,8 @@ BEGIN
       clinician_confirmed_urgency, confirmed_by, confirmed_at,
       confirmation_status, notes, created_at, updated_at
     ) VALUES (
-      p_request_id, v_user.user_id, v_urgency, 'Cancelled', false,
-      v_urgency, v_user.user_id, now(), 'rejected', trim(p_reason), now(), now()
+      p_request_id, v_user.user_id, v_urgency::public.severity_level, 'Cancelled', false,
+      v_urgency::public.severity_level, v_user.user_id, now(), 'rejected', trim(p_reason), now(), now()
     ) RETURNING * INTO v_case;
   END IF;
 
