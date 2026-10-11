@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { buildIncidentReviewAdjustments, createIncidentPlan, getIncidentPlans, IncidentPlanRecord, reviewIncidentPlan, INCIDENT_SCENARIO_LABELS, IncidentScenarioLabel, normalizeIncidentReviewReason } from '../../services/incidentPlanningService';
+import { buildIncidentReviewAdjustments, createIncidentPlan, getIncidentPlans, IncidentPlanRecord, reviewIncidentPlan, INCIDENT_SCENARIO_LABELS, IncidentScenarioLabel } from '../../services/incidentPlanningService';
 
 const emptyCounts = { red: 0, yellow: 0, green: 0, black: 0 };
 const defaultRatios = { icu_per_red: 1, general_per_yellow: 1, general_per_green: 0.25, oxygen_per_red: 2, oxygen_per_yellow: 1, ambulances_per_red: 0.5, ambulances_per_yellow: 0.2, blood_min_per_red: 1, blood_max_per_red: 2 };
@@ -19,7 +19,6 @@ export const IncidentPlanningPanel: React.FC<{ mode: 'coordinator' | 'reviewer' 
   const [counts, setCounts] = useState(emptyCounts);
   const [ratios, setRatios] = useState(defaultRatios);
   const [reviewAdjustments, setReviewAdjustments] = useState<Record<string, Record<string, number>>>({});
-  const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -49,11 +48,9 @@ export const IncidentPlanningPanel: React.FC<{ mode: 'coordinator' | 'reviewer' 
     setBusy(true); setError(''); setNotice('');
     try {
       const edited = buildIncidentReviewAdjustments(decision, version.plans || [], reviewAdjustments[version.id]);
-      const reason = normalizeIncidentReviewReason(reviewReasons[version.id] || '');
-      await reviewIncidentPlan({ versionId: version.id, decision, reason, adjustments: edited });
+      await reviewIncidentPlan({ versionId: version.id, decision, adjustments: edited });
       setNotice(Object.keys(edited).length ? 'Adjusted plan saved as a new immutable version and approved.' : `Plan ${decision}. The review decision and reason were saved.`);
       await refresh();
-      setReviewReasons(all => ({ ...all, [version.id]: '' }));
     } catch (e: any) { setError(e?.message || 'Could not save review.'); }
     finally { setBusy(false); }
   };
@@ -94,7 +91,7 @@ export const IncidentPlanningPanel: React.FC<{ mode: 'coordinator' | 'reviewer' 
         <p className="text-xs text-slate-500">Method {String((v.assumptions as any)?.method_version || 'mci-ratio-v1')}. No live capacity snapshot is attached; quantities are preparedness estimates, not commitments.</p>
         {review?.reason && <p className="text-xs text-slate-400">Reviewer note: {review.reason}</p>}
         {!!plan.history?.length && plan.history.length > 1 && <details className="rounded-lg border border-slate-800 p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-300">Version history ({plan.history.length})</summary><ol className="mt-2 space-y-2">{[...plan.history].sort((a, b) => a.version_number - b.version_number).map(item => { const itemReview = Array.isArray(item.review) ? item.review[0] : item.review; return <li key={item.id} className="flex flex-wrap justify-between gap-2 text-xs text-slate-400"><span>Version {item.version_number}{item.supersedes_version_id ? ' · supersedes prior version' : ''}</span><span>{itemReview?.status || 'review pending'}{itemReview?.reason ? ` · ${itemReview.reason}` : ''}</span></li>; })}</ol></details>}
-        {mode === 'reviewer' && review?.status === 'pending' && <div className="space-y-3"><p className="text-xs text-slate-400">Adjust expected values if needed. Approving any change creates a superseding version. Rejection ignores edited estimates. Explain your decision so the coordinator can understand the review.</p><div className="grid gap-2 sm:grid-cols-2">{(v.plans || []).map(resource => <label key={resource.resource_type} className="text-xs text-slate-300">{resourceLabels[resource.resource_type]} · expected<input type="number" min={0} max={1000000} step={0.01} value={reviewAdjustments[v.id]?.[resource.resource_type] ?? resource.estimated_expected} onChange={e => setReviewAdjustments(all => ({ ...all, [v.id]: { ...all[v.id], [resource.resource_type]: Math.max(0, Math.min(1000000, Number(e.target.value) || 0)) } }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" /></label>)}</div><label className="block text-xs text-slate-300">Review reason<textarea required minLength={8} maxLength={500} value={reviewReasons[v.id] || ''} onChange={e => setReviewReasons(all => ({ ...all, [v.id]: e.target.value }))} rows={3} placeholder="Explain what you checked and why you approve or reject these estimates." className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500" /></label><p className="text-[11px] text-slate-500">Use aggregate planning details only. Do not include patient names, contact details, or other identifying information. Email addresses and phone numbers are blocked.</p><div className="flex gap-2"><button disabled={busy} onClick={() => void decide(plan, 'approved')} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">Approve plan</button><button disabled={busy} onClick={() => void decide(plan, 'rejected')} className="rounded-lg bg-red-800 px-3 py-2 text-sm font-semibold disabled:opacity-50">Reject plan</button></div></div>}
+        {mode === 'reviewer' && review?.status === 'pending' && <div className="space-y-3"><p className="text-xs text-slate-400">Adjust expected values if needed. Approving any change creates a superseding version. Rejection ignores edited estimates. The saved review reason is selected automatically from the action and contains aggregate-only wording.</p><div className="grid gap-2 sm:grid-cols-2">{(v.plans || []).map(resource => <label key={resource.resource_type} className="text-xs text-slate-300">{resourceLabels[resource.resource_type]} · expected<input type="number" min={0} max={1000000} step={0.01} value={reviewAdjustments[v.id]?.[resource.resource_type] ?? resource.estimated_expected} onChange={e => setReviewAdjustments(all => ({ ...all, [v.id]: { ...all[v.id], [resource.resource_type]: Math.max(0, Math.min(1000000, Number(e.target.value) || 0)) } }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" /></label>)}</div><p className="text-[11px] text-slate-500">This review form stores only aggregate estimate changes and a fixed audit reason. Do not add patient names, contact details, or other identifying information.</p><div className="flex gap-2"><button disabled={busy} onClick={() => void decide(plan, 'approved')} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">Approve plan</button><button disabled={busy} onClick={() => void decide(plan, 'rejected')} className="rounded-lg bg-red-800 px-3 py-2 text-sm font-semibold disabled:opacity-50">Reject plan</button></div></div>}
       </article>;
     })}</div>
   </section>;
