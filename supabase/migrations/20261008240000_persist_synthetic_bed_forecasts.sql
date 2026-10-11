@@ -1,27 +1,41 @@
 -- Use the project's canonical prediction_history table while preserving old rows.
+-- Keep its whole-unit demand type because the legacy prediction_dashboard_view depends on it.
 -- Each recalculation appends one row per resource and horizon with an auditable input snapshot.
+BEGIN;
+
 ALTER TABLE public.prediction_history
-  ALTER COLUMN predicted_demand TYPE NUMERIC(12, 2)
-    USING predicted_demand::NUMERIC(12, 2),
   ADD COLUMN IF NOT EXISTS forecast_run_id UUID,
   ADD COLUMN IF NOT EXISTS forecast_horizon_days SMALLINT,
   ADD COLUMN IF NOT EXISTS method_version TEXT,
   ADD COLUMN IF NOT EXISTS input_snapshot JSONB;
 
-ALTER TABLE public.prediction_history
-  ADD CONSTRAINT prediction_history_valid_horizon
-    CHECK (forecast_horizon_days IS NULL OR forecast_horizon_days IN (1, 7)),
-  ADD CONSTRAINT prediction_history_valid_method
-    CHECK (method_version IS NULL OR length(method_version) BETWEEN 1 AND 100),
-  ADD CONSTRAINT prediction_history_snapshot_object
-    CHECK (input_snapshot IS NULL OR jsonb_typeof(input_snapshot) = 'object'),
-  ADD CONSTRAINT prediction_history_forecast_fields_complete
-    CHECK (
-      (forecast_run_id IS NULL AND forecast_horizon_days IS NULL AND method_version IS NULL AND input_snapshot IS NULL)
-      OR (forecast_run_id IS NOT NULL AND forecast_horizon_days IS NOT NULL AND method_version IS NOT NULL AND input_snapshot IS NOT NULL)
-    ),
-  ADD CONSTRAINT prediction_history_synthetic_method_only
-    CHECK (forecast_run_id IS NULL OR (prediction_model::TEXT = 'SyntheticRequestRate' AND confidence_score IS NULL));
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.prediction_history'::regclass AND conname = 'prediction_history_valid_horizon') THEN
+    ALTER TABLE public.prediction_history ADD CONSTRAINT prediction_history_valid_horizon
+      CHECK (forecast_horizon_days IS NULL OR forecast_horizon_days IN (1, 7));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.prediction_history'::regclass AND conname = 'prediction_history_valid_method') THEN
+    ALTER TABLE public.prediction_history ADD CONSTRAINT prediction_history_valid_method
+      CHECK (method_version IS NULL OR length(method_version) BETWEEN 1 AND 100);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.prediction_history'::regclass AND conname = 'prediction_history_snapshot_object') THEN
+    ALTER TABLE public.prediction_history ADD CONSTRAINT prediction_history_snapshot_object
+      CHECK (input_snapshot IS NULL OR jsonb_typeof(input_snapshot) = 'object');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.prediction_history'::regclass AND conname = 'prediction_history_forecast_fields_complete') THEN
+    ALTER TABLE public.prediction_history ADD CONSTRAINT prediction_history_forecast_fields_complete
+      CHECK (
+        (forecast_run_id IS NULL AND forecast_horizon_days IS NULL AND method_version IS NULL AND input_snapshot IS NULL)
+        OR (forecast_run_id IS NOT NULL AND forecast_horizon_days IS NOT NULL AND method_version IS NOT NULL AND input_snapshot IS NOT NULL)
+      );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.prediction_history'::regclass AND conname = 'prediction_history_synthetic_method_only') THEN
+    ALTER TABLE public.prediction_history ADD CONSTRAINT prediction_history_synthetic_method_only
+      CHECK (forecast_run_id IS NULL OR (prediction_model::TEXT = 'SyntheticRequestRate' AND confidence_score IS NULL));
+  END IF;
+END;
+$$;
 
 CREATE INDEX IF NOT EXISTS prediction_history_latest_forecast_idx
   ON public.prediction_history (hospital_id, resource_type, forecast_horizon_days, created_at DESC)
@@ -226,3 +240,5 @@ COMMENT ON COLUMN public.prediction_history.forecast_horizon_days IS
   'Forecast horizon for synthetic operational rows: 1 or 7 days; NULL for legacy records.';
 COMMENT ON COLUMN public.prediction_history.input_snapshot IS
   'Aggregate synthetic-only inputs captured at calculation time; contains no patient identifiers.';
+
+COMMIT;
