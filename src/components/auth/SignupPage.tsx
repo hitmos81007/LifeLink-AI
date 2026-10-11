@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole, ROLE_OPTIONS } from '../../types/database';
+import { parseProviderSignupCoordinates } from '../../services/providerSignupCoordinates';
 import {
   Activity,
   UserPlus,
@@ -77,6 +78,17 @@ export const SignupPage: React.FC = () => {
     let parsedLat: number | null = null;
     let parsedLng: number | null = null;
 
+    if (selectedRole === 'hospital_admin' || selectedRole === 'blood_bank_admin') {
+      try {
+        const coordinates = parseProviderSignupCoordinates(latitudeInput, longitudeInput);
+        parsedLat = coordinates.latitude;
+        parsedLng = coordinates.longitude;
+      } catch (error) {
+        setLocalError(error instanceof Error ? error.message : 'Enter a valid facility coordinate pair.');
+        return;
+      }
+    }
+
     if (selectedRole === 'hospital_admin') {
       if (!hospitalName.trim()) {
         setLocalError('Hospital Name is required.');
@@ -99,23 +111,6 @@ export const SignupPage: React.FC = () => {
         return;
       }
 
-      if (latitudeInput.trim() !== '') {
-        const val = Number(latitudeInput);
-        if (isNaN(val) || val < -90 || val > 90) {
-          setLocalError('Latitude must be a valid number between -90 and 90.');
-          return;
-        }
-        parsedLat = val;
-      }
-
-      if (longitudeInput.trim() !== '') {
-        const val = Number(longitudeInput);
-        if (isNaN(val) || val < -180 || val > 180) {
-          setLocalError('Longitude must be a valid number between -180 and 180.');
-          return;
-        }
-        parsedLng = val;
-      }
     }
 
     if (selectedRole === 'ambulance_admin') {
@@ -151,23 +146,6 @@ export const SignupPage: React.FC = () => {
         return;
       }
 
-      if (latitudeInput.trim() !== '') {
-        const val = Number(latitudeInput);
-        if (isNaN(val) || val < -90 || val > 90) {
-          setLocalError('Latitude must be a valid number between -90 and 90.');
-          return;
-        }
-        parsedLat = val;
-      }
-
-      if (longitudeInput.trim() !== '') {
-        const val = Number(longitudeInput);
-        if (isNaN(val) || val < -180 || val > 180) {
-          setLocalError('Longitude must be a valid number between -180 and 180.');
-          return;
-        }
-        parsedLng = val;
-      }
     }
 
     setIsSubmitting(true);
