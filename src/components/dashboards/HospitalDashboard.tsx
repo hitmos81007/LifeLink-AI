@@ -38,6 +38,7 @@ import {
 } from '../../types/database';
 import { subscribeToSupabaseRealtime } from '../../services/supabaseDataLayer';
 import { LoadingState, ErrorState } from '../common/EmptyState';
+import { PrototypeDataNotice } from '../common/PrototypeDataNotice';
 import { ResourceTransferManager } from '../ResourceTransferManager';
 import { OperationalPredictionManager } from '../OperationalPredictionManager';
 import { ResourceRiskAlertsPanel } from './ResourceRiskAlertsPanel';
@@ -451,6 +452,8 @@ export const HospitalDashboard: React.FC = () => {
           <span>Sync Hospital Inventory</span>
         </button>
       </div>
+
+      <PrototypeDataNotice />
 
       {loading ? (
         <LoadingState message="Loading hospital inventory from Supabase..." />

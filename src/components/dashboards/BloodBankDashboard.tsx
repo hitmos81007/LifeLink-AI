@@ -20,6 +20,7 @@ import {
 import { BloodBankTable, BloodInventoryTable, BloodGroup } from '../../types/database';
 import { subscribeToSupabaseRealtime } from '../../services/supabaseDataLayer';
 import { LoadingState, ErrorState } from '../common/EmptyState';
+import { PrototypeDataNotice } from '../common/PrototypeDataNotice';
 import { getUsableBloodUnits, validateBloodStockCounts } from '../../services/bloodInventoryUtils';
 import { ResourceRiskAlertsPanel } from './ResourceRiskAlertsPanel';
 
@@ -272,6 +273,8 @@ export const BloodBankDashboard: React.FC = () => {
           <span>Sync Database</span>
         </button>
       </div>
+
+      <PrototypeDataNotice />
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
