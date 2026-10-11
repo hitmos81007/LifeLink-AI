@@ -40,6 +40,16 @@ export interface NearbyTransferSource {
   key: string;
 }
 
+export interface ResourceTransferEvent {
+  event_id: string;
+  transfer_id: string;
+  event_type: string;
+  from_status: string | null;
+  to_status: string;
+  quantity: number;
+  created_at: string;
+}
+
 /**
  * Lists nearby active donor facilities that currently have stock above their
  * protected minimum. The database scopes the search to the authenticated
@@ -235,6 +245,23 @@ export async function getResourceTransfers(hospitalId?: string): Promise<(Resour
     console.error('[Supabase Exception] getResourceTransfers:', err?.message || err);
     throw err;
   }
+}
+
+/** Reads the participant-scoped audit timeline for one transfer. */
+export async function getResourceTransferEvents(transferId: string): Promise<ResourceTransferEvent[]> {
+  if (!transferId) throw new Error('A transfer ID is required to load its timeline.');
+  const { data, error } = await supabase
+    .from('resource_transfer_events')
+    .select('event_id,transfer_id,event_type,from_status,to_status,quantity,created_at')
+    .eq('transfer_id', transferId)
+    .order('created_at', { ascending: true })
+    .order('event_id', { ascending: true });
+
+  if (error) throw new Error(`Failed to load transfer timeline: ${error.message}`);
+  return ((data || []) as ResourceTransferEvent[]).map((event) => ({
+    ...event,
+    quantity: Number(event.quantity)
+  }));
 }
 
 /**

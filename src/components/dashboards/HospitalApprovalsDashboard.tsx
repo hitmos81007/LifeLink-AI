@@ -27,6 +27,7 @@ import { LoadingState, ErrorState, EmptyState } from '../common/EmptyState';
 import { hasCapability, getRoleDisplayLabel } from '../../types/roles';
 import { LeafletEmergencyMap, MapEntity } from '../common/LeafletEmergencyMap';
 import { canSourceHospitalReviewTransfer } from '../../services/resourceTransferCompatibility';
+import { ResourceTransferTimeline } from '../ResourceTransferTimeline';
 
 export const HospitalApprovalsDashboard: React.FC = () => {
   const { userProfile } = useAuth();
@@ -273,6 +274,8 @@ export const HospitalApprovalsDashboard: React.FC = () => {
                         <strong className="text-white text-xs">{t.destination_hospital?.hospital_name || t.destination_hospital_id}</strong>
                       </div>
                     </div>
+
+                    <ResourceTransferTimeline transferId={t.transfer_id} />
 
                     {/* Action Controls */}
                     {canReview && (

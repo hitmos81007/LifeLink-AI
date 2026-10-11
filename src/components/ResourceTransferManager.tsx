@@ -26,6 +26,7 @@ import { ResourceTransferTable, TransferResourceType, TransferStatus } from '../
 import { subscribeToSupabaseRealtime } from '../services/supabaseDataLayer';
 import { getResourceFreshness, ResourceCategory } from '../services/resourceFreshness';
 import { LoadingState, ErrorState } from './common/EmptyState';
+import { ResourceTransferTimeline } from './ResourceTransferTimeline';
 
 interface ResourceTransferManagerProps {
   title?: string;
@@ -486,29 +487,32 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                       {new Date(t.created_at).toLocaleDateString()} {new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <div className="flex items-center justify-end gap-1 font-sans">
-                        {t.status === 'Completed' ? (
-                          <span className="text-emerald-400 text-[10px] font-bold flex items-center gap-1 justify-end">
-                            <CheckCircle2 className="w-3 h-3" /> Completed
-                          </span>
-                        ) : userProfile?.role === 'hospital_approver' && isSource && t.status === 'Pending' ? (
-                          <>
-                            <button
-                              onClick={() => handleStatusChange(t.transfer_id, 'Approved')}
-                              disabled={transitioningTransferId !== null}
-                              className="text-emerald-300 hover:text-emerald-200 disabled:opacity-50 font-bold inline-flex items-center gap-1"
-                            ><CheckCircle2 className="w-3 h-3" />Approve</button>
-                            <button
-                              onClick={() => handleStatusChange(t.transfer_id, 'Rejected')}
-                              disabled={transitioningTransferId !== null}
-                              className="text-rose-300 hover:text-rose-200 disabled:opacity-50 font-bold inline-flex items-center gap-1"
-                            ><XCircle className="w-3 h-3" />Reject</button>
-                          </>
-                        ) : userProfile?.role === 'hospital_admin' && isSource && t.status === 'Approved' ? (
-                          <button onClick={() => handleStatusChange(t.transfer_id, 'In Transit')} className="text-amber-300 hover:text-amber-200 font-bold inline-flex items-center gap-1"><Truck className="w-3 h-3"/>Record simulated handoff</button>
-                        ) : userProfile?.role === 'hospital_admin' && isDest && t.status === 'In Transit' ? (
-                          <button onClick={() => handleStatusChange(t.transfer_id, 'Completed')} className="text-emerald-300 hover:text-emerald-200 font-bold inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/>Record simulated receipt</button>
-                        ) : <span className="text-slate-500 text-[10px]">Awaiting authorized action</span>}
+                      <div className="flex flex-col items-end gap-2 font-sans">
+                        <div className="flex items-center justify-end gap-1">
+                          {t.status === 'Completed' ? (
+                            <span className="text-emerald-400 text-[10px] font-bold flex items-center gap-1 justify-end">
+                              <CheckCircle2 className="w-3 h-3" /> Completed
+                            </span>
+                          ) : userProfile?.role === 'hospital_approver' && isSource && t.status === 'Pending' ? (
+                            <>
+                              <button
+                                onClick={() => handleStatusChange(t.transfer_id, 'Approved')}
+                                disabled={transitioningTransferId !== null}
+                                className="text-emerald-300 hover:text-emerald-200 disabled:opacity-50 font-bold inline-flex items-center gap-1"
+                              ><CheckCircle2 className="w-3 h-3" />Approve</button>
+                              <button
+                                onClick={() => handleStatusChange(t.transfer_id, 'Rejected')}
+                                disabled={transitioningTransferId !== null}
+                                className="text-rose-300 hover:text-rose-200 disabled:opacity-50 font-bold inline-flex items-center gap-1"
+                              ><XCircle className="w-3 h-3" />Reject</button>
+                            </>
+                          ) : userProfile?.role === 'hospital_admin' && isSource && t.status === 'Approved' ? (
+                            <button onClick={() => handleStatusChange(t.transfer_id, 'In Transit')} className="text-amber-300 hover:text-amber-200 font-bold inline-flex items-center gap-1"><Truck className="w-3 h-3"/>Record simulated handoff</button>
+                          ) : userProfile?.role === 'hospital_admin' && isDest && t.status === 'In Transit' ? (
+                            <button onClick={() => handleStatusChange(t.transfer_id, 'Completed')} className="text-emerald-300 hover:text-emerald-200 font-bold inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/>Record simulated receipt</button>
+                          ) : <span className="text-slate-500 text-[10px]">Awaiting authorized action</span>}
+                        </div>
+                        <ResourceTransferTimeline transferId={t.transfer_id} />
                       </div>
                     </td>
                   </tr>
