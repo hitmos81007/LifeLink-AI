@@ -521,6 +521,20 @@ export const ClinicianReviewDashboard: React.FC = () => {
                       {req.needs_blood && <span className="bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded font-bold">Blood ({req.required_blood_group})</span>}
                     </div>
 
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-[11px] text-slate-300">
+                      <span className="font-bold text-slate-200">Requested quantities:</span>{' '}
+                      {req.needed_by ? (
+                        <>
+                          ICU {req.requested_icu_beds ?? 'not recorded'}, general beds {req.requested_general_beds ?? 'not recorded'}, oxygen units {req.requested_oxygen_units ?? 'not recorded'}, blood units {req.requested_blood_units ?? 'not recorded'}, ambulances {req.requested_ambulances ?? 'not recorded'}
+                          <span className="text-slate-500"> · </span>
+                          <span className="font-bold text-slate-200">Needed by:</span> {new Date(req.needed_by).toLocaleString()}
+                        </>
+                      ) : (
+                        <span className="text-slate-400">Not recorded for this request.</span>
+                      )}
+                      <p className="mt-1 text-[10px] text-slate-500">Synthetic aggregate planning details only; clinician review sets urgency.</p>
+                    </div>
+
                     <p className="text-[10px] text-slate-400">
                       Synthetic prototype record • An optional coarse fictional area may be stored; no real patient location or free-text details are collected.
                     </p>

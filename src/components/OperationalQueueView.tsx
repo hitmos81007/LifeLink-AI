@@ -316,6 +316,13 @@ export const OperationalQueueView: React.FC<OperationalQueueViewProps> = ({
                         </span>
                       )}
                     </div>
+                    <div className="pt-2 text-[10px] text-slate-400">
+                      <div>
+                        Requested: ICU {item.requested_quantities.icu_beds ?? 'not recorded'}, general beds {item.requested_quantities.general_beds ?? 'not recorded'}, oxygen units {item.requested_quantities.oxygen_units ?? 'not recorded'}, blood units {item.requested_quantities.blood_units ?? 'not recorded'}, ambulances {item.requested_quantities.ambulances ?? 'not recorded'}
+                      </div>
+                      <div className="mt-0.5">Needed by: {item.needed_by ? new Date(item.needed_by).toLocaleString() : 'Not recorded'}</div>
+                      <div className="mt-0.5 text-slate-500">Synthetic aggregate request details. Queue tier remains clinician-confirmed.</div>
+                    </div>
                   </div>
                 </div>
 
