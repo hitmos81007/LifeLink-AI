@@ -300,11 +300,11 @@ export const GoogleMapsEmergencyView: React.FC = () => {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 text-white shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div className="space-y-2">
           <span className="inline-flex px-2.5 py-1 text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded items-center gap-1.5">
-            <Building2 className="w-3.5 h-3.5" /> Synthetic prototype data • Supabase
+            <Building2 className="w-3.5 h-3.5" /> Public facility directory • Supabase
           </span>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight">Find nearby healthcare resources</h2>
           <p className="text-xs sm:text-sm text-slate-300 max-w-3xl leading-relaxed">
-            This finder uses synthetic resource records for demonstration only. Availability is not real-world capacity and may be stale. Confirm through verified channels; this is not an emergency service or dispatch system.
+            Facility profiles are listed for prototype lookup. Resource quantities use seeded or simulated inventory records only; they are not live capacity and may be stale. Confirm with the facility through verified channels. This is not an emergency service or dispatch system.
           </p>
         </div>
         <button onClick={() => void refresh()} disabled={loading} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-xs font-bold inline-flex items-center gap-2">
@@ -449,7 +449,7 @@ export const GoogleMapsEmergencyView: React.FC = () => {
           {selectedResult && (
             <p className="text-xs text-slate-400 px-1">Selected: <strong className="text-slate-200">{selectedResult.entity.name}</strong> · {selectedResult.resourceLabel} · Please call to verify before travelling.</p>
           )}
-          {!loading && directory && results.length > 0 && <p className="text-[11px] text-slate-500 px-1">Directory contains {directory.hospitals.length} hospital(s), {directory.blood_banks.length} blood bank(s), and {directory.ambulance_providers.length} ambulance provider(s). Data is synthetic prototype information.</p>}
+          {!loading && directory && results.length > 0 && <p className="text-[11px] text-slate-500 px-1">Directory contains {directory.hospitals.length} hospital(s), {directory.blood_banks.length} blood bank(s), and {directory.ambulance_providers.length} ambulance provider(s). Inventory quantities are seeded or simulated prototype records.</p>}
         </section>
       </div>
     </div>
