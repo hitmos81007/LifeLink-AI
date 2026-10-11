@@ -63,11 +63,11 @@ BEGIN
     reported_severity, severity, latitude, longitude, status, notes,
     data_origin, created_at, updated_at
   ) VALUES (
-    v_user.user_id, p_emergency_type,
-    CASE WHEN p_needs_blood THEN p_required_blood_group ELSE NULL END,
+    v_user.user_id, p_emergency_type::public.emergency_type,
+    CASE WHEN p_needs_blood THEN p_required_blood_group::public.blood_group ELSE NULL END,
     p_needs_blood, p_needs_icu, p_needs_general_bed,
     p_needs_oxygen, p_needs_ambulance,
-    p_reported_severity, p_reported_severity, NULL, NULL,
+    p_reported_severity, p_reported_severity::public.severity_level, NULL, NULL,
     'Pending', NULL, 'synthetic', now(), now()
   ) RETURNING * INTO v_request;
   RETURN v_request;
