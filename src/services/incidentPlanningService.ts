@@ -7,14 +7,39 @@ export const INCIDENT_SCENARIO_LABELS = [
 ] as const;
 export type IncidentScenarioLabel = typeof INCIDENT_SCENARIO_LABELS[number];
 
-export function getIncidentReviewReason(
+const incidentReviewReasons = {
+  approvedUnchanged: [
+    'Reviewed aggregate counts and planning assumptions.',
+    'Confirmed unchanged estimates against the submitted scenario assumptions.'
+  ],
+  approvedAdjusted: [
+    'Adjusted estimates after reviewing aggregate counts and planning assumptions.',
+    'Updated estimates to reflect reviewed aggregate planning assumptions.'
+  ],
+  rejected: [
+    'Rejected aggregate scenario; counts or planning assumptions need revision.',
+    'Rejected because aggregate counts need correction.',
+    'Rejected because planning assumptions need revision.'
+  ]
+} as const;
+
+export function getIncidentReviewReasonOptions(
   decision: 'approved' | 'rejected',
-  adjustments: Record<string, number> = {}
+  hasAdjustments = false
+): readonly string[] {
+  if (decision === 'rejected') return incidentReviewReasons.rejected;
+  return hasAdjustments ? incidentReviewReasons.approvedAdjusted : incidentReviewReasons.approvedUnchanged;
+}
+
+function validateIncidentReviewReason(
+  decision: 'approved' | 'rejected',
+  adjustments: Record<string, number>,
+  reason: string
 ): string {
-  if (decision === 'rejected') return 'Rejected aggregate scenario; counts or planning assumptions need revision.';
-  return Object.keys(adjustments).length
-    ? 'Adjusted estimates after reviewing aggregate counts and planning assumptions.'
-    : 'Reviewed aggregate counts and planning assumptions.';
+  if (!getIncidentReviewReasonOptions(decision, Object.keys(adjustments).length > 0).includes(reason)) {
+    throw new Error('Choose a review reason that matches the decision and estimate changes.');
+  }
+  return reason;
 }
 
 export interface IncidentPlanRecord {
@@ -92,12 +117,13 @@ export async function createIncidentPlan(input: {
   if (error) throw error;
 }
 
-export async function reviewIncidentPlan(input: { versionId: string; decision: 'approved' | 'rejected'; adjustments?: Record<string, number> }): Promise<void> {
+export async function reviewIncidentPlan(input: { versionId: string; decision: 'approved' | 'rejected'; reason: string; adjustments?: Record<string, number> }): Promise<void> {
   const adjustments = input.adjustments || {};
+  const reason = validateIncidentReviewReason(input.decision, adjustments, input.reason);
   const { error } = await supabase.rpc('review_incident_plan', {
     p_version_id: input.versionId,
     p_decision: input.decision,
-    p_reason: getIncidentReviewReason(input.decision, adjustments),
+    p_reason: reason,
     p_adjustments: adjustments
   });
   if (error) throw error;
