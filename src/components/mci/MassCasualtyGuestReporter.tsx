@@ -204,7 +204,7 @@ export const MassCasualtyGuestReporter: React.FC<MassCasualtyGuestReporterProps>
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Test a synthetic scenario. Nothing is reported, broadcast, or dispatched.
+              Test a synthetic scenario. Results stay in this open session; nothing is saved, reported, broadcast, or dispatched.
             </p>
           </div>
         </div>
