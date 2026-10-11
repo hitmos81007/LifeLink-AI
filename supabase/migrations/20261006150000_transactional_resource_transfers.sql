@@ -108,7 +108,7 @@ BEGIN
     RETURNING * INTO v_transfer;
   IF v_transfer.source_hospital_id<>v_user.hospital_id
      OR v_transfer.destination_hospital_id<>p_destination_hospital_id
-     OR v_transfer.resource_type<>p_resource_type
+     OR v_transfer.resource_type<>p_resource_type::public.transfer_resource_type
      OR COALESCE(v_transfer.resource_name,'')<>COALESCE(p_resource_name,'')
      OR v_transfer.quantity<>p_quantity THEN
     RAISE EXCEPTION 'Idempotency key has already been used for a different transfer request';

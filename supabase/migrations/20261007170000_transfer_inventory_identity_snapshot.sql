@@ -87,7 +87,7 @@ BEGIN
     source_hospital_id,destination_hospital_id,resource_type,resource_name,quantity,status,
     remarks,requested_by,source_inventory_id,destination_inventory_id,resource_identity,idempotency_key
   ) VALUES (
-    v_user.hospital_id,p_destination_hospital_id,p_resource_type,p_resource_name,p_quantity,'Pending',
+    v_user.hospital_id,p_destination_hospital_id,p_resource_type::public.transfer_resource_type,p_resource_name,p_quantity,'Pending',
     p_remarks,v_user.user_id,v_source_id,v_destination_id,v_identity,p_idempotency_key
   )
   ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
@@ -96,7 +96,7 @@ BEGIN
 
   IF v_transfer.source_hospital_id<>v_user.hospital_id
      OR v_transfer.destination_hospital_id<>p_destination_hospital_id
-     OR v_transfer.resource_type<>p_resource_type
+     OR v_transfer.resource_type<>p_resource_type::public.transfer_resource_type
      OR COALESCE(v_transfer.resource_name,'')<>COALESCE(p_resource_name,'')
      OR v_transfer.quantity<>p_quantity
      OR v_transfer.source_inventory_id IS DISTINCT FROM v_source_id

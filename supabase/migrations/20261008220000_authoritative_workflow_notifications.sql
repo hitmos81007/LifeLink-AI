@@ -109,9 +109,9 @@ BEGIN
     needs_oxygen,needs_ambulance,reported_severity,severity,latitude,longitude,status,notes,
     data_origin,created_at,updated_at
   ) VALUES (
-    v_user.user_id,p_emergency_type,CASE WHEN p_needs_blood THEN p_required_blood_group ELSE NULL END,
+    v_user.user_id,p_emergency_type::public.emergency_type,CASE WHEN p_needs_blood THEN p_required_blood_group::public.blood_group ELSE NULL END,
     p_needs_blood,p_needs_icu,p_needs_general_bed,p_needs_oxygen,p_needs_ambulance,
-    p_reported_severity,p_reported_severity,NULL,NULL,'Pending',NULL,'synthetic',now(),now()
+    p_reported_severity,p_reported_severity::public.severity_level,NULL,NULL,'Pending',NULL,'synthetic',now(),now()
   ) RETURNING * INTO v_request;
 
   SELECT array_agg(user_id) INTO v_reviewers FROM public.users
@@ -160,7 +160,7 @@ BEGIN
   PERFORM public.enqueue_workflow_notifications_internal(
     v_recipients,'resource_transfer_requested','resource_transfer',v_transfer.transfer_id,
     'Synthetic transfer awaiting source approval',
-    format('A prototype request proposes sending %s %s to another facility. Review the transfer before any simulated inventory change.',v_transfer.quantity,left(COALESCE(v_transfer.resource_name,v_transfer.resource_type),120)),
+    format('A prototype request proposes sending %s %s to another facility. Review the transfer before any simulated inventory change.',v_transfer.quantity,left(COALESCE(v_transfer.resource_name,v_transfer.resource_type::text),120)),
     'Medium'
   );
   RETURN v_transfer;
@@ -196,7 +196,7 @@ BEGIN
   PERFORM public.enqueue_workflow_notifications_internal(
     v_recipients,'resource_transfer_'||lower(replace(p_new_status,' ','_')),'resource_transfer',v_transfer.transfer_id,
     'Synthetic transfer '||lower(p_new_status),
-    format('Prototype transfer of %s %s is now %s. This records a simulated workflow step; no physical shipment is arranged.',COALESCE(v_transfer.approved_quantity,v_transfer.quantity),left(COALESCE(v_transfer.resource_name,v_transfer.resource_type),120),lower(p_new_status)),
+    format('Prototype transfer of %s %s is now %s. This records a simulated workflow step; no physical shipment is arranged.',COALESCE(v_transfer.approved_quantity,v_transfer.quantity),left(COALESCE(v_transfer.resource_name,v_transfer.resource_type::text),120),lower(p_new_status)),
     v_priority
   );
   RETURN v_transfer;
