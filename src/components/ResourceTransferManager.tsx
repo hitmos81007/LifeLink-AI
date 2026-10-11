@@ -336,7 +336,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                 {nearbySources.length === 0 ? (
                   <div className="p-3 bg-slate-950 border border-amber-800/80 text-amber-300 rounded-xl text-xs flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>{stockLoading ? 'Searching nearby facilities…' : 'No active facility has matching stock above its protected minimum for this resource.'}</span>
+                    <span>{stockLoading ? 'Searching nearby facilities…' : 'No transfer-ready source is available at this range. A source needs stock above its protected minimum and active hospital approver and admin accounts.'}</span>
                   </div>
                 ) : (
                   <select
