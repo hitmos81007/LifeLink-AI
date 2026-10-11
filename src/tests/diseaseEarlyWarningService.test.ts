@@ -43,6 +43,15 @@ describe('synthetic district early-warning calculation', () => {
     expect(warnings.map((warning) => warning.level)).toEqual(['elevated', 'normal']);
   });
 
+  it('marks a moderate synthetic increase as watch, below the elevated threshold', () => {
+    const rows = observationsFor('Synthetic district B', (offset) => offset < 7 ? 8 : 5);
+    const [warning] = calculateDiseaseEarlyWarnings(rows, now);
+    expect(warning.level).toBe('watch');
+    expect(warning.baselineCasesPerDay).toBe(5);
+    expect(warning.recentCasesPerDay).toBe(8);
+    expect(warning.caseChangePercent).toBe(60);
+  });
+
   it('withholds a tier when there is not enough history and flags old generated data', () => {
     const shortHistory = observationsFor('Synthetic district C', () => 5, 12);
     const missingLatestDay = observationsFor('Synthetic district E', () => 5).slice(0, 27);
