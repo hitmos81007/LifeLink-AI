@@ -19,6 +19,7 @@ import {
 import {
   generateOperationalBaselineEstimates,
   recalculateOperationalBaselineEstimates,
+  isOperationalForecastStale,
   OperationalForecastItem
 } from '../services/predictionService';
 import { TransferResourceType } from '../types/database';
@@ -193,7 +194,7 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
       {/* Main Content */}
       {loading ? (
         <LoadingState message="Calculating illustrative estimates from Supabase-visible records..." />
-      ) : error ? (
+      ) : error && forecasts.length === 0 ? (
         <ErrorState message={error} onRetry={() => fetchBaselineEstimates()} />
       ) : filteredForecasts.length === 0 ? (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-8 text-center space-y-2">
@@ -204,12 +205,19 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredForecasts.map((item, idx) => {
-            const deficit24h = item.predicted_demand_24h - item.current_quantity;
-            const isDeficit = deficit24h > 0;
+        <>
+          {error && (
+            <div role="alert" className="rounded-xl border border-amber-800 bg-amber-950/50 p-3 text-xs text-amber-200">
+              Refresh failed: {error} Showing the last saved estimates below; verify their timestamps before relying on them.
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredForecasts.map((item, idx) => {
+              const deficit24h = item.predicted_demand_24h - item.current_quantity;
+              const isDeficit = deficit24h > 0;
+              const isStale = Boolean(error) || isOperationalForecastStale(item.last_calculated);
 
-            return (
+              return (
               <div
                 key={`${item.hospital_id}-${item.resource_type}-${idx}`}
                 className="bg-slate-950 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl space-y-3 transition-all flex flex-col justify-between"
@@ -224,6 +232,11 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
                       <h3 className="font-bold text-white text-sm flex items-center gap-1.5 pt-0.5">
                         <span>{item.resource_type}</span>
                       </h3>
+                      {isStale && (
+                        <span className="inline-flex mt-1 rounded border border-amber-800 bg-amber-950/70 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">
+                          Stale estimate · recalculate before review
+                        </span>
+                      )}
                     </div>
 
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRiskBadge(item.shortage_risk)}`}>
@@ -287,9 +300,10 @@ export const OperationalPredictionManager: React.FC<OperationalPredictionManager
                   </button>
                 </div>
               </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* Gemini AI Explanation Modal */}

@@ -1,6 +1,15 @@
 import { supabase } from '../lib/supabase/client';
 import { TransferResourceType } from '../types/database';
 
+export const OPERATIONAL_FORECAST_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+export function isOperationalForecastStale(lastCalculated: string, now = Date.now()): boolean {
+  const calculatedAt = Date.parse(lastCalculated);
+  return !Number.isFinite(calculatedAt)
+    || calculatedAt > now
+    || now - calculatedAt > OPERATIONAL_FORECAST_STALE_AFTER_MS;
+}
+
 export interface OperationalForecastItem {
   prediction_id?: string;
   hospital_id: string;
@@ -52,7 +61,8 @@ function mapStoredForecasts(rows: StoredForecastRow[] | null): OperationalForeca
     const demand7d = Number(row.predicted_demand_7d);
     const observed = Number(row.observed_requests_30d);
     if (![currentQuantity, demand24h, demand7d, observed].every(Number.isFinite)
-      || currentQuantity < 0 || demand24h < 0 || demand7d < 0 || observed < 1) {
+      || currentQuantity < 0 || demand24h < 0 || demand7d < 0 || observed < 1
+      || !Number.isFinite(Date.parse(row.last_calculated))) {
       throw new Error(`Stored forecast values are invalid for facility ${row.hospital_id}.`);
     }
     return {

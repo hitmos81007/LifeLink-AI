@@ -5,7 +5,9 @@ vi.mock('../lib/supabase/client', () => ({ supabase: { rpc: rpcMock } }));
 
 import {
   generateOperationalBaselineEstimates,
-  recalculateOperationalBaselineEstimates
+  recalculateOperationalBaselineEstimates,
+  isOperationalForecastStale,
+  OPERATIONAL_FORECAST_STALE_AFTER_MS
 } from '../services/predictionService';
 
 const storedRows = [
@@ -56,6 +58,14 @@ describe('persisted synthetic operational estimates', () => {
     expect(rpcMock).toHaveBeenCalledWith('recalculate_synthetic_operational_bed_forecasts', { p_hospital_id: 'hospital-1' });
   });
 
+  it('marks forecasts stale after 24 hours and treats invalid or future timestamps as stale', () => {
+    const now = Date.parse('2026-10-11T12:00:00Z');
+    expect(isOperationalForecastStale(new Date(now - OPERATIONAL_FORECAST_STALE_AFTER_MS).toISOString(), now)).toBe(false);
+    expect(isOperationalForecastStale(new Date(now - OPERATIONAL_FORECAST_STALE_AFTER_MS - 1).toISOString(), now)).toBe(true);
+    expect(isOperationalForecastStale('not-a-time', now)).toBe(true);
+    expect(isOperationalForecastStale(new Date(now + 1).toISOString(), now)).toBe(true);
+  });
+
   it('surfaces read failures rather than silently replacing saved data', async () => {
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'authorization denied' } });
     await expect(generateOperationalBaselineEstimates()).rejects.toThrow('Could not load saved estimates: authorization denied');
@@ -70,6 +80,8 @@ describe('persisted synthetic operational estimates', () => {
     rpcMock.mockResolvedValueOnce({ data: [{ ...storedRows[0], resource_type: 'Blood' }], error: null });
     await expect(generateOperationalBaselineEstimates()).rejects.toThrow('Stored forecast has an unsupported resource type: Blood.');
     rpcMock.mockResolvedValueOnce({ data: [{ ...storedRows[0], current_quantity: -1 }], error: null });
+    await expect(generateOperationalBaselineEstimates()).rejects.toThrow('Stored forecast values are invalid for facility hospital-1.');
+    rpcMock.mockResolvedValueOnce({ data: [{ ...storedRows[0], last_calculated: 'invalid' }], error: null });
     await expect(generateOperationalBaselineEstimates()).rejects.toThrow('Stored forecast values are invalid for facility hospital-1.');
   });
 });
