@@ -50,9 +50,13 @@ function isFacilityCompatibleWithRequest(
   hospital: ClinicalReviewNetwork['hospitals'][number],
   request: PatientRequestTable
 ): boolean {
-  if (request.needs_icu && (hospital.available_icu_beds < 1
+  const requiredIcuBeds = request.needs_icu ? (request.requested_icu_beds ?? 1) : 0;
+  const requiredGeneralBeds = request.needs_general_bed ? (request.requested_general_beds ?? 1) : 0;
+  if (request.needs_icu && (!Number.isInteger(requiredIcuBeds) || requiredIcuBeds < 1
+    || !Number.isFinite(hospital.allocatable_icu_beds) || hospital.allocatable_icu_beds < requiredIcuBeds
     || getResourceFreshness(hospital.icu_updated_at ?? null, 'icu') !== 'Fresh')) return false;
-  if (request.needs_general_bed && (hospital.available_beds < 1
+  if (request.needs_general_bed && (!Number.isInteger(requiredGeneralBeds) || requiredGeneralBeds < 1
+    || !Number.isFinite(hospital.allocatable_general_beds) || hospital.allocatable_general_beds < requiredGeneralBeds
     || getResourceFreshness(hospital.beds_updated_at ?? null, 'beds') !== 'Fresh')) return false;
   if (request.needs_oxygen && (hospital.available_oxygen_records <= 0
     || getResourceFreshness(hospital.oxygen_updated_at ?? null, 'oxygen') !== 'Fresh')) return false;
@@ -533,6 +537,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
                         <span className="text-slate-400">Not recorded for this request.</span>
                       )}
                       <p className="mt-1 text-[10px] text-slate-500">Synthetic aggregate planning details only; clinician review sets urgency.</p>
+                      <p className="mt-1 text-[10px] text-amber-300">Bed quantities are matched and reserved above the hospital safety buffer. Oxygen and blood quantities are demand indicators; stock is not reserved. This workflow can assign one ambulance, so larger requested ambulance counts are not fulfilled here.</p>
                     </div>
 
                     <p className="text-[10px] text-slate-400">
@@ -598,7 +603,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
                             <option value="">{hospitalsForRequest(req).length ? 'Select a compatible facility' : 'No compatible inventory recorded'}</option>
                             {hospitalsForRequest(req).map((h) => (
                               <option key={h.hospital_id} value={h.hospital_id}>
-                                🏥 {h.hospital_name} ({h.available_icu_beds} ICU • {h.available_beds} general • {h.available_oxygen_records} oxygen records above zero)
+                                🏥 {h.hospital_name} ({h.allocatable_icu_beds} allocatable ICU • {h.allocatable_general_beds} allocatable general • {h.available_oxygen_records} oxygen records above zero)
                               </option>
                             ))}
                           </select>

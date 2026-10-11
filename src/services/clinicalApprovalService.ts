@@ -22,6 +22,7 @@ export interface ClinicalApprovalParams {
 export interface ClinicalReviewNetwork {
   hospitals: Array<Pick<HospitalTable, 'hospital_id' | 'hospital_name' | 'address' | 'district' | 'latitude' | 'longitude' | 'trauma_center' | 'status'> & {
     available_icu_beds: number; available_beds: number; available_oxygen_records: number;
+    allocatable_icu_beds: number; allocatable_general_beds: number;
     icu_updated_at?: string | null; beds_updated_at?: string | null; oxygen_updated_at?: string | null;
   }>;
   bloodBanks: Array<Pick<BloodBankTable, 'blood_bank_id' | 'blood_bank_name' | 'address' | 'district' | 'latitude' | 'longitude' | 'status'> & {
