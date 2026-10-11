@@ -380,6 +380,9 @@ export interface ResourceTransferTable {
   requested_by?: string | null;
   idempotency_key?: string | null;
   source_inventory_id?: string | null;
+  needed_by?: string | null;
+  urgency?: 'Routine' | 'Urgent' | 'Critical' | null;
+  reason_category?: string | null;
   status: TransferStatus;
   approved_by: string | null; // FK -> users.user_id
   remarks: string | null;

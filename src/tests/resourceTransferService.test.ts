@@ -37,11 +37,13 @@ describe('location-based inbound resource requests', () => {
     const identity = { resource_type: 'General Beds', name: null };
     await expect(createInboundTransferRequest({
       source_hospital_id: 'donor-1', resource_type: 'General Beds', resource_name: 'General Beds',
-      resource_identity: identity, quantity: 2, idempotency_key: '2de35681-4a5b-4a10-a181-57f749fbe44a'
+      resource_identity: identity, quantity: 2, needed_by: '2027-01-01T12:00:00.000Z',
+      urgency: 'Urgent', reason_category: 'Demand surge', idempotency_key: '2de35681-4a5b-4a10-a181-57f749fbe44a'
     })).resolves.toMatchObject({ success: true, data: { transfer_id: 'transfer-1' } });
-    expect(rpcMock).toHaveBeenCalledWith('request_inbound_resource_transfer', expect.objectContaining({
+    expect(rpcMock).toHaveBeenCalledWith('request_inbound_resource_transfer_with_details', expect.objectContaining({
       p_source_hospital_id: 'donor-1', p_resource_type: 'General Beds', p_quantity: 2,
-      p_resource_identity: identity, p_idempotency_key: '2de35681-4a5b-4a10-a181-57f749fbe44a'
+      p_resource_identity: identity, p_idempotency_key: '2de35681-4a5b-4a10-a181-57f749fbe44a',
+      p_needed_by: '2027-01-01T12:00:00.000Z', p_urgency: 'Urgent', p_reason_category: 'Demand surge'
     }));
   });
 
@@ -50,9 +52,27 @@ describe('location-based inbound resource requests', () => {
     for (const quantity of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
       await expect(createInboundTransferRequest({
         source_hospital_id: 'donor-1', resource_type: 'ICU Beds', resource_name: 'ICU Beds',
-        resource_identity: { resource_type: 'ICU Beds' }, quantity
+        resource_identity: { resource_type: 'ICU Beds' }, quantity,
+        needed_by: '2027-01-01T12:00:00.000Z', urgency: 'Routine', reason_category: 'Stock depletion'
       })).resolves.toMatchObject({ success: false });
     }
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects past deadlines and unsupported request metadata before calling Supabase', async () => {
+    rpcMock.mockClear();
+    const base = {
+      source_hospital_id: 'donor-1', resource_type: 'ICU Beds' as const, resource_name: 'ICU Beds',
+      resource_identity: { resource_type: 'ICU Beds' }, quantity: 1,
+      needed_by: new Date(Date.now() + 60_000).toISOString(), urgency: 'Routine' as const,
+      reason_category: 'Stock depletion'
+    };
+    await expect(createInboundTransferRequest({ ...base, needed_by: '2020-01-01T00:00:00.000Z' }))
+      .resolves.toMatchObject({ success: false, error: 'Choose a need-by time in the future.' });
+    await expect(createInboundTransferRequest({ ...base, urgency: 'Unspecified' as 'Routine' }))
+      .resolves.toMatchObject({ success: false, error: 'Choose a valid logistics urgency.' });
+    await expect(createInboundTransferRequest({ ...base, reason_category: 'Patient details' }))
+      .resolves.toMatchObject({ success: false, error: 'Choose a valid reason category.' });
     expect(rpcMock).not.toHaveBeenCalled();
   });
 });

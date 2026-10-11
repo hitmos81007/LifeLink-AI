@@ -79,20 +79,36 @@ export async function createInboundTransferRequest(params: {
   resource_name: string;
   resource_identity: Record<string, string | null>;
   quantity: number;
+  needed_by: string;
+  urgency: 'Routine' | 'Urgent' | 'Critical';
+  reason_category: string;
   idempotency_key?: string;
 }): Promise<{ success: boolean; data?: ResourceTransferTable; error?: string }> {
   if (!params.source_hospital_id) return { success: false, error: 'Choose a nearby source facility.' };
   if (!Number.isSafeInteger(params.quantity) || params.quantity <= 0) {
     return { success: false, error: 'Transfer quantity must be a positive whole number.' };
   }
+  const neededBy = new Date(params.needed_by);
+  if (!params.needed_by || Number.isNaN(neededBy.getTime()) || neededBy.getTime() <= Date.now()) {
+    return { success: false, error: 'Choose a need-by time in the future.' };
+  }
+  if (!['Routine', 'Urgent', 'Critical'].includes(params.urgency)) {
+    return { success: false, error: 'Choose a valid logistics urgency.' };
+  }
+  if (!['Stock depletion', 'Demand surge', 'Supply disruption', 'Equipment failure', 'Other'].includes(params.reason_category)) {
+    return { success: false, error: 'Choose a valid reason category.' };
+  }
   try {
-    const { data, error } = await supabase.rpc('request_inbound_resource_transfer', {
+    const { data, error } = await supabase.rpc('request_inbound_resource_transfer_with_details', {
       p_source_hospital_id: params.source_hospital_id,
       p_resource_type: params.resource_type,
       p_resource_name: params.resource_name,
       p_quantity: params.quantity,
       p_resource_identity: params.resource_identity,
-      p_idempotency_key: params.idempotency_key || crypto.randomUUID()
+      p_idempotency_key: params.idempotency_key || crypto.randomUUID(),
+      p_needed_by: neededBy.toISOString(),
+      p_urgency: params.urgency,
+      p_reason_category: params.reason_category
     });
     if (error || !data) return { success: false, error: error?.message || 'No transfer request was returned.' };
     const created = (Array.isArray(data) ? data[0] : data) as ResourceTransferTable | null;
