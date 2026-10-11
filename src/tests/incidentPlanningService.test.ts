@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildIncidentReviewAdjustments, getIncidentReviewReason, INCIDENT_REVIEW_REASONS } from '../services/incidentPlanningService';
+import { buildIncidentReviewAdjustments, normalizeIncidentReviewReason } from '../services/incidentPlanningService';
 
 const plans = [
   { resource_type: 'icu_beds', estimated_expected: 10 },
@@ -15,9 +15,10 @@ describe('incident plan review adjustments', () => {
     expect(buildIncidentReviewAdjustments('approved', plans, { icu_beds: 8, oxygen_units: 20 })).toEqual({ icu_beds: 8 });
   });
 
-  it('uses only fixed, synthetic review reasons for each review outcome', () => {
-    expect(getIncidentReviewReason('approved', {})).toBe(INCIDENT_REVIEW_REASONS[0]);
-    expect(getIncidentReviewReason('approved', { icu_beds: 8 })).toBe(INCIDENT_REVIEW_REASONS[1]);
-    expect(getIncidentReviewReason('rejected', { icu_beds: 8 })).toBe(INCIDENT_REVIEW_REASONS[2]);
+  it('trims and validates reviewer-authored reasons', () => {
+    expect(normalizeIncidentReviewReason('  Reviewed capacity assumptions.  ')).toBe('Reviewed capacity assumptions.');
+    expect(() => normalizeIncidentReviewReason('Fix it')).toThrow('at least 8 characters');
+    expect(() => normalizeIncidentReviewReason('Call me at 1234567890')).toThrow('phone numbers');
+    expect(() => normalizeIncidentReviewReason('x'.repeat(501))).toThrow('500 characters');
   });
 });
