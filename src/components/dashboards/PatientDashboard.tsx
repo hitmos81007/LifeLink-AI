@@ -34,6 +34,10 @@ import { LeafletEmergencyMap, MapEntity } from '../common/LeafletEmergencyMap';
 import { getResourceFreshness } from '../../services/resourceFreshness';
 import { calculateHaversineDistance, isValidCoordinatePair } from '../../services/geoService';
 
+function toLocalDateTimeInput(date: Date): string {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
 export const PatientDashboard: React.FC = () => {
   const { userProfile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -56,6 +60,10 @@ export const PatientDashboard: React.FC = () => {
   const [needsOxygen, setNeedsOxygen] = useState(true);
   const [needsAmbulance, setNeedsAmbulance] = useState(true);
   const [severity, setSeverity] = useState<SeverityLevel>('Critical');
+  const [requestedQuantities, setRequestedQuantities] = useState({
+    icu_beds: 1, general_beds: 1, oxygen_units: 1, blood_units: 1, ambulances: 1
+  });
+  const [neededByLocal, setNeededByLocal] = useState(() => toLocalDateTimeInput(new Date(Date.now() + 60 * 60 * 1000)));
   const [syntheticScenarioConfirmed, setSyntheticScenarioConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -144,6 +152,14 @@ export const PatientDashboard: React.FC = () => {
         needs_oxygen: needsOxygen,
         needs_ambulance: needsAmbulance,
         severity,
+        requested_quantities: {
+          icu_beds: needsIcu ? requestedQuantities.icu_beds : 0,
+          general_beds: needsGeneralBed ? requestedQuantities.general_beds : 0,
+          oxygen_units: needsOxygen ? requestedQuantities.oxygen_units : 0,
+          blood_units: needsBlood ? requestedQuantities.blood_units : 0,
+          ambulances: needsAmbulance ? requestedQuantities.ambulances : 0
+        },
+        needed_by: neededByLocal,
         simulationLocation: useMapPointForScenario && directorySearchPoint
           ? {
               latitude: directorySearchPoint.lat,
@@ -564,6 +580,27 @@ export const PatientDashboard: React.FC = () => {
                   <span>Needs Blood</span>
                 </label>
               </div>
+              <p className="text-[11px] text-slate-500">Scenario quantities are aggregate counts only. Blood and oxygen are generic units; no treatment, dose, reservation, or dispatch is requested.</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {needsIcu && <QuantityInput label="ICU beds" value={requestedQuantities.icu_beds} onChange={(value) => setRequestedQuantities((current) => ({ ...current, icu_beds: value }))} />}
+                {needsGeneralBed && <QuantityInput label="General beds" value={requestedQuantities.general_beds} onChange={(value) => setRequestedQuantities((current) => ({ ...current, general_beds: value }))} />}
+                {needsOxygen && <QuantityInput label="Oxygen units" value={requestedQuantities.oxygen_units} onChange={(value) => setRequestedQuantities((current) => ({ ...current, oxygen_units: value }))} />}
+                {needsBlood && <QuantityInput label="Blood units" value={requestedQuantities.blood_units} onChange={(value) => setRequestedQuantities((current) => ({ ...current, blood_units: value }))} />}
+                {needsAmbulance && <QuantityInput label="Ambulances" value={requestedQuantities.ambulances} onChange={(value) => setRequestedQuantities((current) => ({ ...current, ambulances: value }))} />}
+              </div>
+              <label className="block space-y-1 text-xs font-bold text-slate-300">
+                Needed by (scenario time)
+                <input
+                  type="datetime-local"
+                  required
+                  min={toLocalDateTimeInput(new Date())}
+                  max={toLocalDateTimeInput(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))}
+                  value={neededByLocal}
+                  onChange={(event) => setNeededByLocal(event.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-white"
+                />
+                <span className="block font-normal text-[11px] text-slate-500">This timing helps rank a synthetic scenario within its clinician-confirmed urgency band. It cannot change clinical priority by itself.</span>
+              </label>
             </div>
 
             {needsBlood && (
@@ -677,6 +714,11 @@ export const PatientDashboard: React.FC = () => {
                         : 'Synthetic scenario • no location or free-text stored'}
                     </p>
 
+                    <p className="text-slate-300 text-[11px]">
+                      Needed by: {req.needed_by ? new Date(req.needed_by).toLocaleString() : 'Not recorded'}
+                      {' · '}Requested: ICU {req.requested_icu_beds ?? '—'}, general {req.requested_general_beds ?? '—'}, oxygen {req.requested_oxygen_units ?? '—'}, blood {req.requested_blood_units ?? '—'}, ambulances {req.requested_ambulances ?? '—'}
+                    </p>
+
                     <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono pt-1">
                       <span>{new Date(req.created_at).toLocaleString()}</span>
                       <span className="text-slate-500">Clinician review suggestions are private</span>
@@ -691,3 +733,19 @@ export const PatientDashboard: React.FC = () => {
     </div>
   );
 };
+
+const QuantityInput: React.FC<{ label: string; value: number; onChange: (value: number) => void }> = ({ label, value, onChange }) => (
+  <label className="block space-y-1 text-xs font-semibold text-slate-300">
+    {label} needed
+    <input
+      type="number"
+      min={1}
+      max={10000}
+      step={1}
+      required
+      value={value}
+      onChange={(event) => onChange(Math.max(1, Math.min(10000, Math.trunc(Number(event.target.value) || 1))))}
+      className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-white"
+    />
+  </label>
+);
