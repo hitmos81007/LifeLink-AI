@@ -75,10 +75,9 @@ export interface MciIncidentReport {
   created_at: string;
 }
 
-const LOCAL_STORAGE_MCI_KEY = 'lifelink_mci_incidents';
-
 /**
- * Local-only synthetic MCI simulator. It must never notify users or dispatch real resources.
+ * Session-only synthetic MCI simulator. Results are returned to the open UI and
+ * are never persisted, submitted, broadcast, or used to dispatch real resources.
  */
 export async function reportMassCasualtyIncident(data: {
   hazard_type: MciHazardType;
@@ -284,33 +283,5 @@ export async function reportMassCasualtyIncident(data: {
     created_at: now
   };
 
-  // Persist locally so a successful submission cannot be mistaken for a saved report on failure.
-  try {
-    const existingRaw = localStorage.getItem(LOCAL_STORAGE_MCI_KEY);
-    const existingList: MciIncidentReport[] = existingRaw ? JSON.parse(existingRaw) : [];
-    existingList.unshift(report);
-    localStorage.setItem(LOCAL_STORAGE_MCI_KEY, JSON.stringify(existingList.slice(0, 20)));
-  } catch (e) {
-    console.warn('LocalStorage save error:', e);
-    throw new Error('The local simulation could not be saved in this browser. No report was submitted.');
-  }
-
   return report;
-}
-
-/**
- * Fetch all recent mass casualty incident reports for disaster dashboard view.
- */
-export function getRecentMciIncidents(): MciIncidentReport[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_MCI_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed as MciIncidentReport[] : [];
-    }
-  } catch (e) {
-    console.warn('getRecentMciIncidents parse error:', e);
-  }
-
-  return [];
 }

@@ -2,21 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createEmptyMciTriageCounts,
   createSyntheticMciExampleCounts,
-  getRecentMciIncidents,
   reportMassCasualtyIncident,
   SYNTHETIC_MCI_LOCATION
 } from '../services/massCasualtyService';
 import { calculateHaversineDistance } from '../services/geoService';
 
-const storage = new Map<string, string>();
+const localStorageGet = vi.fn();
+const localStorageSet = vi.fn();
 
 beforeEach(() => {
-  storage.clear();
+  localStorageGet.mockClear();
+  localStorageSet.mockClear();
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: {
-      getItem: (key: string) => storage.get(key) ?? null,
-      setItem: (key: string, value: string) => storage.set(key, value)
+      getItem: localStorageGet,
+      setItem: localStorageSet
     }
   });
 });
@@ -89,23 +90,16 @@ describe('synthetic mass-casualty distribution', () => {
     expect(report).not.toHaveProperty('reported_by');
     expect(report).not.toHaveProperty('contact_phone');
     expect(report).not.toHaveProperty('scene_notes');
-    expect(JSON.stringify(getRecentMciIncidents()[0])).not.toContain('Real Person');
+    expect(JSON.stringify(report)).not.toContain('Real Person');
   });
 
-  it('does not invent a sample incident when no reports exist or stored data is malformed', () => {
-    expect(getRecentMciIncidents()).toEqual([]);
-    storage.set('lifelink_mci_incidents', '{bad json');
-    expect(getRecentMciIncidents()).toEqual([]);
-  });
-
-  it('reports a storage failure instead of claiming the report was saved', async () => {
-    Object.defineProperty(globalThis, 'localStorage', {
-      configurable: true,
-      value: { getItem: () => null, setItem: vi.fn(() => { throw new Error('quota'); }) }
-    });
-    await expect(reportMassCasualtyIncident({
+  it('returns the session preview without reading from or writing to browser storage', async () => {
+    const report = await reportMassCasualtyIncident({
       hazard_type: 'Multi-Vehicle Collision / Highway Pileup',
       triage: { red: 0, yellow: 0, green: 1, black: 0 }
-    })).rejects.toThrow(/could not be saved/i);
+    });
+    expect(report.total_casualties).toBe(1);
+    expect(localStorageGet).not.toHaveBeenCalled();
+    expect(localStorageSet).not.toHaveBeenCalled();
   });
 });
