@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { rpcMock, fromMock } = vi.hoisted(() => ({ rpcMock: vi.fn(), fromMock: vi.fn() }));
 vi.mock('../lib/supabase/client', () => ({ supabase: { rpc: rpcMock, from: fromMock } }));
 
-import { createInboundTransferRequest, createTransferRequest, getNearbyTransferSources, getResourceTransfers, updateTransferStatus } from '../services/resourceTransferService';
+import { createInboundTransferRequest, createTransferRequest, getNearbyTransferSources, getResourceTransferEvents, getResourceTransfers, updateTransferStatus } from '../services/resourceTransferService';
 
 describe('location-based inbound resource requests', () => {
   beforeEach(() => rpcMock.mockResolvedValue({ data: [], error: null }));
@@ -54,6 +54,39 @@ describe('location-based inbound resource requests', () => {
       })).resolves.toMatchObject({ success: false });
     }
     expect(rpcMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('resource transfer timeline', () => {
+  beforeEach(() => fromMock.mockReset());
+  afterEach(() => vi.clearAllMocks());
+
+  it('loads participant-visible events in chronological order and normalizes quantities', async () => {
+    const events = [{
+      event_id: 'event-1', transfer_id: 'transfer-1', event_type: 'REQUESTED',
+      from_status: null, to_status: 'Pending', quantity: '2', created_at: '2026-10-11T10:00:00Z'
+    }];
+    const query: any = {
+      select: vi.fn(() => query),
+      eq: vi.fn(() => query),
+      order: vi.fn(() => query),
+      then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: events, error: null }).then(resolve)
+    };
+    fromMock.mockReturnValue(query);
+
+    await expect(getResourceTransferEvents('transfer-1')).resolves.toMatchObject([
+      { event_id: 'event-1', transfer_id: 'transfer-1', quantity: 2 }
+    ]);
+    expect(fromMock).toHaveBeenCalledWith('resource_transfer_events');
+    expect(query.select).toHaveBeenCalledWith('event_id,transfer_id,event_type,from_status,to_status,quantity,created_at');
+    expect(query.eq).toHaveBeenCalledWith('transfer_id', 'transfer-1');
+    expect(query.order).toHaveBeenNthCalledWith(1, 'created_at', { ascending: true });
+    expect(query.order).toHaveBeenNthCalledWith(2, 'event_id', { ascending: true });
+  });
+
+  it('rejects an empty transfer id without querying Supabase', async () => {
+    await expect(getResourceTransferEvents('')).rejects.toThrow('A transfer ID is required');
+    expect(fromMock).not.toHaveBeenCalled();
   });
 });
 
