@@ -15,13 +15,19 @@ describe('location-based inbound resource requests', () => {
       district: 'North', state: 'Example', latitude: 12, longitude: 77, distance_km: '4.3',
       resource_type: 'Oxygen', resource_name: 'Medical Oxygen',
       resource_identity: { resource_type: 'Oxygen', name: 'Medical Oxygen', unit: 'cylinders' },
-      transferable_quantity: '8', unit: 'cylinders'
+      transferable_quantity: '8', unit: 'cylinders', last_reported_at: '2026-10-11T09:00:00Z'
     }], error: null });
 
     const sources = await getNearbyTransferSources('Oxygen');
-    expect(rpcMock).toHaveBeenCalledWith('find_nearby_transfer_sources', { p_resource_type: 'Oxygen' });
+    expect(rpcMock).toHaveBeenCalledWith('find_nearby_transfer_sources', { p_resource_type: 'Oxygen', p_max_distance_km: 100 });
     expect(sources[0]).toMatchObject({ distance_km: 4.3, transferable_quantity: 8, source_hospital_id: 'donor-1' });
+    expect(sources[0].last_reported_at).toBe('2026-10-11T09:00:00Z');
     expect(sources[0].key).toContain('donor-1');
+  });
+
+  it('passes an explicit unlimited range for any-distance searches', async () => {
+    await getNearbyTransferSources('Medicine', null);
+    expect(rpcMock).toHaveBeenCalledWith('find_nearby_transfer_sources', { p_resource_type: 'Medicine', p_max_distance_km: null });
   });
 
   it('creates an inbound request against the selected nearby source and verifies the pending row', async () => {

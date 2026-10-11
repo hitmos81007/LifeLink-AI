@@ -1,26 +1,39 @@
--- Read-only catalog verification for 20261015120000_location_need_based_resource_transfers.sql.
+-- Read-only catalog verification for the location-based transfer migrations.
 -- Creates no users, requests, or inventory rows.
 DO $$
 DECLARE
   v_discovery REGPROCEDURE := to_regprocedure('public.find_nearby_transfer_sources(text)');
+  v_filtered_discovery REGPROCEDURE := to_regprocedure('public.find_nearby_transfer_sources(text,numeric)');
   v_request REGPROCEDURE := to_regprocedure('public.request_inbound_resource_transfer(uuid,text,text,integer,jsonb,uuid)');
   v_transition REGPROCEDURE := to_regprocedure('public.transition_resource_transfer_internal(uuid,text,integer,text)');
   v_discovery_definition TEXT;
+  v_filtered_discovery_definition TEXT;
   v_request_definition TEXT;
   v_transition_definition TEXT;
 BEGIN
-  IF v_discovery IS NULL OR v_request IS NULL OR v_transition IS NULL THEN
+  IF v_discovery IS NULL OR v_filtered_discovery IS NULL OR v_request IS NULL OR v_transition IS NULL THEN
     RAISE EXCEPTION 'Location-based source discovery, inbound request, or transition implementation is missing';
   END IF;
   IF NOT (SELECT prosecdef FROM pg_proc WHERE oid=v_discovery)
+     OR NOT (SELECT prosecdef FROM pg_proc WHERE oid=v_filtered_discovery)
      OR NOT (SELECT prosecdef FROM pg_proc WHERE oid=v_request) THEN
-    RAISE EXCEPTION 'Both location-based RPCs must enforce their authority in SECURITY DEFINER code';
+    RAISE EXCEPTION 'Location-based discovery and request RPCs must enforce authority in SECURITY DEFINER code';
   END IF;
   IF NOT has_function_privilege('authenticated',v_discovery,'EXECUTE')
+     OR NOT has_function_privilege('authenticated',v_filtered_discovery,'EXECUTE')
      OR NOT has_function_privilege('authenticated',v_request,'EXECUTE')
      OR has_function_privilege('anon',v_discovery,'EXECUTE')
+     OR has_function_privilege('anon',v_filtered_discovery,'EXECUTE')
      OR has_function_privilege('anon',v_request,'EXECUTE') THEN
     RAISE EXCEPTION 'Location-based RPC privileges must be authenticated-only';
+  END IF;
+
+  v_filtered_discovery_definition:=pg_get_functiondef(v_filtered_discovery);
+  IF position('p_max_distance_km' IN v_filtered_discovery_definition)=0
+     OR position('c.distance_km<=p_max_distance_km' IN v_filtered_discovery_definition)=0
+     OR position('last_reported_at' IN pg_get_function_result(v_filtered_discovery))=0
+     OR position('updated_at' IN v_filtered_discovery_definition)=0 THEN
+    RAISE EXCEPTION 'Filtered donor discovery must apply the selected radius and return source inventory freshness';
   END IF;
 
   v_discovery_definition:=pg_get_functiondef(v_discovery);
