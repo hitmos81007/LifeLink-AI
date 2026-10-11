@@ -262,7 +262,7 @@ export interface MedicineInventoryTable {
   dosage: string;
   manufacturer: string | null;
   current_stock: number;
-  reserved_stock?: number;
+  reserved_stock: number;
   minimum_stock: number;
   unit: string;
   expiry_date: string | null;
