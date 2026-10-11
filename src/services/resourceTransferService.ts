@@ -24,6 +24,76 @@ export interface CreateTransferParams {
   idempotency_key?: string;
 }
 
+export interface NearbyTransferSource {
+  source_hospital_id: string;
+  hospital_name: string;
+  hospital_code: string;
+  district: string;
+  state: string;
+  latitude: number | null;
+  longitude: number | null;
+  distance_km: number | null;
+  resource_type: TransferResourceType;
+  resource_name: string;
+  resource_identity: Record<string, string | null>;
+  transferable_quantity: number;
+  unit: string;
+  key: string;
+}
+
+/**
+ * Lists nearby active donor facilities that currently have stock above their
+ * protected minimum. The database scopes the search to the authenticated
+ * receiving hospital and ranks facilities by straight-line distance.
+ */
+export async function getNearbyTransferSources(
+  resourceType: TransferResourceType
+): Promise<NearbyTransferSource[]> {
+  const { data, error } = await supabase.rpc('find_nearby_transfer_sources', {
+    p_resource_type: resourceType
+  });
+  if (error) throw new Error(`Could not find nearby transfer sources: ${error.message}`);
+  return ((data || []) as Omit<NearbyTransferSource, 'key'>[]).map((source) => ({
+    ...source,
+    distance_km: source.distance_km == null ? null : Number(source.distance_km),
+    transferable_quantity: Number(source.transferable_quantity),
+    key: `${source.source_hospital_id}:${JSON.stringify(source.resource_identity)}`
+  }));
+}
+
+/** Creates a need request as the receiving facility; donor approval remains required. */
+export async function createInboundTransferRequest(params: {
+  source_hospital_id: string;
+  resource_type: TransferResourceType;
+  resource_name: string;
+  resource_identity: Record<string, string | null>;
+  quantity: number;
+  idempotency_key?: string;
+}): Promise<{ success: boolean; data?: ResourceTransferTable; error?: string }> {
+  if (!params.source_hospital_id) return { success: false, error: 'Choose a nearby source facility.' };
+  if (!Number.isSafeInteger(params.quantity) || params.quantity <= 0) {
+    return { success: false, error: 'Transfer quantity must be a positive whole number.' };
+  }
+  try {
+    const { data, error } = await supabase.rpc('request_inbound_resource_transfer', {
+      p_source_hospital_id: params.source_hospital_id,
+      p_resource_type: params.resource_type,
+      p_resource_name: params.resource_name,
+      p_quantity: params.quantity,
+      p_resource_identity: params.resource_identity,
+      p_idempotency_key: params.idempotency_key || crypto.randomUUID()
+    });
+    if (error || !data) return { success: false, error: error?.message || 'No transfer request was returned.' };
+    const created = (Array.isArray(data) ? data[0] : data) as ResourceTransferTable | null;
+    if (!created?.transfer_id || created.status !== 'Pending' || created.source_hospital_id !== params.source_hospital_id) {
+      return { success: false, error: 'No verified pending inbound transfer was returned. Refresh before continuing.' };
+    }
+    return { success: true, data: created };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Unexpected error while requesting a transfer.' };
+  }
+}
+
 /**
  * Creates a new resource transfer request after validating constraints and stock availability.
  * Shows success ONLY after a real resource_transfers row is returned from DB.

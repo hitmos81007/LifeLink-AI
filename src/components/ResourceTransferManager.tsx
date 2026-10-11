@@ -16,13 +16,13 @@ import {
   Info
 } from 'lucide-react';
 import {
-  createTransferRequest,
+  createInboundTransferRequest,
+  getNearbyTransferSources,
   getResourceTransfers,
+  NearbyTransferSource,
   updateTransferStatus
 } from '../services/resourceTransferService';
-import { getActiveHospitals, getGeneralBedInventory, getICUInventory, getMedicineInventory, getOxygenInventory, HospitalDirectoryItem } from '../services/hospitalService';
 import { ResourceTransferTable, TransferResourceType, TransferStatus } from '../types/database';
-import { buildMedicineTransferOptions, buildOxygenTransferOptions, TransferStockOption } from '../services/resourceTransferCompatibility';
 import { subscribeToSupabaseRealtime } from '../services/supabaseDataLayer';
 import { LoadingState, ErrorState } from './common/EmptyState';
 
@@ -40,7 +40,6 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
   const isGovtAdmin = userProfile?.role === 'government_admin';
 
   const [transfers, setTransfers] = useState<any[]>([]);
-  const [hospitals, setHospitals] = useState<HospitalDirectoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -50,10 +49,9 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [destHospitalId, setDestHospitalId] = useState<string>('');
   const [resourceType, setResourceType] = useState<TransferResourceType>('ICU Beds');
-  const [resourceName, setResourceName] = useState<string>('ICU Beds');
-  const [stockOptions, setStockOptions] = useState<TransferStockOption[]>([]);
+  const [nearbySources, setNearbySources] = useState<NearbyTransferSource[]>([]);
+  const [selectedSourceKey, setSelectedSourceKey] = useState<string>('');
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
@@ -69,23 +67,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
     setLoading(true);
     setError(null);
     try {
-      const [transData, activeHospData] = await Promise.all([
-        getResourceTransfers(isGovtAdmin ? undefined : userHospitalId || undefined),
-        getActiveHospitals(userHospitalId || undefined)
-      ]);
-
-      setTransfers(transData);
-      setHospitals(activeHospData);
-
-      // Default destination hospital to first active hospital in directory
-      if (activeHospData.length > 0) {
-        setDestHospitalId(prev => {
-          const exists = activeHospData.some(h => h.hospital_id === prev);
-          return exists ? prev : activeHospData[0].hospital_id;
-        });
-      } else {
-        setDestHospitalId('');
-      }
+      setTransfers(await getResourceTransfers(isGovtAdmin ? undefined : userHospitalId || undefined));
     } catch (err: any) {
       console.error('Fetch transfers error:', err);
       setError(err?.message || 'Failed to load inter-hospital resource transfers.');
@@ -107,9 +89,8 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
 
   const handleResourceTypeChange = (type: TransferResourceType) => {
     setResourceType(type);
-    if (type === 'ICU Beds') setResourceName('ICU Beds');
-    else if (type === 'General Beds') setResourceName('General Beds');
-    else setResourceName('');
+    setSelectedSourceKey('');
+    setQuantity(1);
   };
 
   useEffect(() => {
@@ -117,30 +98,14 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
     let cancelled = false;
     setStockLoading(true);
     setStockError(null);
+    setNearbySources([]);
+    setSelectedSourceKey('');
     const loadStock = async () => {
       try {
-        if (!destHospitalId) {
-          if (!cancelled) setStockOptions([]);
-          return;
-        }
-        let options: TransferStockOption[] = [];
-        if (resourceType === 'ICU Beds') {
-          const [source, destination] = await Promise.all([getICUInventory(userHospitalId), getICUInventory(destHospitalId)]);
-          if (source && destination) options = [{ key: 'ICU Beds', label: 'ICU Beds', resourceName: 'ICU Beds', transferable: source.available_icu_beds, unit: 'beds' }];
-        } else if (resourceType === 'General Beds') {
-          const [source, destination] = await Promise.all([getGeneralBedInventory(userHospitalId), getGeneralBedInventory(destHospitalId)]);
-          if (source && destination) options = [{ key: 'General Beds', label: 'General Beds', resourceName: 'General Beds', transferable: source.available_beds, unit: 'beds' }];
-        } else if (resourceType === 'Oxygen') {
-          const [sourceRows, destinationRows] = await Promise.all([getOxygenInventory(userHospitalId), getOxygenInventory(destHospitalId)]);
-          options = buildOxygenTransferOptions(sourceRows, destinationRows);
-        } else {
-          const [sourceRows, destinationRows] = await Promise.all([getMedicineInventory(userHospitalId), getMedicineInventory(destHospitalId)]);
-          options = buildMedicineTransferOptions(sourceRows, destinationRows);
-        }
+        const options = await getNearbyTransferSources(resourceType);
         if (!cancelled) {
-          const available = options.filter((option) => option.transferable > 0);
-          setStockOptions(available);
-          setResourceName((current) => available.some((option) => option.key === current) ? current : (available[0]?.key || ''));
+          setNearbySources(options);
+          setSelectedSourceKey((current) => options.some((option) => option.key === current) ? current : (options[0]?.key || ''));
         }
       } catch (err: any) {
         if (!cancelled) setStockError(err?.message || 'Could not load source inventory.');
@@ -150,32 +115,22 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
     };
     void loadStock();
     return () => { cancelled = true; };
-  }, [showCreateModal, userHospitalId, destHospitalId, resourceType]);
+  }, [showCreateModal, userHospitalId, resourceType]);
 
-  const selectedStock = stockOptions.find((option) => option.key === resourceName);
+  const selectedStock = nearbySources.find((option) => option.key === selectedSourceKey);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    if (!userHospitalId && !isGovtAdmin) {
+    if (!userHospitalId || userProfile?.role !== 'hospital_admin') {
       setFormError('Your account is not linked to a valid hospital facility. Only hospital admins can submit transfer requests.');
       return;
     }
 
-    const sourceId = userHospitalId || '';
-    if (!sourceId) {
-      setFormError('Source hospital ID is missing.');
-      return;
-    }
-
-    if (!destHospitalId) {
-      setFormError('Please select a destination hospital.');
-      return;
-    }
-
-    if (sourceId === destHospitalId) {
-      setFormError('Source and destination hospital must differ.');
+    const receivingHospitalId = userHospitalId;
+    if (!receivingHospitalId) {
+      setFormError('Receiving hospital ID is missing.');
       return;
     }
 
@@ -183,33 +138,31 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
       setFormError('Quantity must be greater than zero.');
       return;
     }
-    if (!selectedStock || quantity > selectedStock.transferable) {
-      setFormError('Choose a listed resource and a quantity within transferable stock above the protected minimum.');
+    if (!selectedStock || quantity > selectedStock.transferable_quantity) {
+      setFormError('Choose a nearby source and a quantity within its stock available above the protected minimum.');
       return;
     }
 
     setSubmitting(true);
     try {
       const fingerprint = JSON.stringify([
-        sourceId, destHospitalId, resourceType, selectedStock?.key, quantity
+        receivingHospitalId, selectedStock.source_hospital_id, resourceType, selectedStock.key, quantity
       ]);
       if (!transferAttemptRef.current || transferAttemptRef.current.fingerprint !== fingerprint) {
         transferAttemptRef.current = { fingerprint, idempotencyKey: crypto.randomUUID() };
       }
-      const result = await createTransferRequest({
-        source_hospital_id: sourceId,
-        destination_hospital_id: destHospitalId,
+      const result = await createInboundTransferRequest({
+        source_hospital_id: selectedStock.source_hospital_id,
         resource_type: resourceType,
-        resource_name: selectedStock.resourceName,
-        resource_identity: selectedStock.identity,
+        resource_name: selectedStock.resource_name,
+        resource_identity: selectedStock.resource_identity,
         quantity: Number(quantity),
-        operator_id: userProfile?.user_id,
         idempotency_key: transferAttemptRef.current.idempotencyKey
       });
 
       if (result.success && result.data) {
         transferAttemptRef.current = null;
-        triggerToast(`Resource transfer request #${result.data.transfer_id.slice(0, 8)} created successfully!`);
+        triggerToast(`Inbound request #${result.data.transfer_id.slice(0, 8)} sent to ${selectedStock.hospital_name} for source approval.`);
         setShowCreateModal(false);
         setQuantity(1);
         await fetchInitialData();
@@ -298,7 +251,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
               setFormError(null);
               setShowCreateModal(true);
             }}
-            disabled={isGovtAdmin || userProfile?.role !== 'hospital_admin' || !userHospitalId}
+            disabled={userProfile?.role !== 'hospital_admin' || !userHospitalId}
             className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-950/50 flex items-center gap-2 transition-all cursor-pointer border border-blue-500"
           >
             <PlusCircle className="w-4 h-4" />
@@ -335,57 +288,49 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
             </div>
 
             <form onSubmit={handleCreateSubmit} className="space-y-4 text-xs">
-              {/* Destination Hospital */}
               <div className="space-y-1">
-                <label className="text-slate-300 font-bold block">Destination Hospital</label>
-                {hospitals.length === 0 ? (
+                <label className="text-slate-300 font-bold block">Resource needed at this hospital</label>
+                <select
+                  value={resourceType}
+                  onChange={(e) => handleResourceTypeChange(e.target.value as TransferResourceType)}
+                  className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="ICU Beds">ICU Beds</option>
+                  <option value="General Beds">General Beds</option>
+                  <option value="Oxygen">Oxygen</option>
+                  <option value="Medicine">Medicine</option>
+                </select>
+              </div>
+              {/* Nearby donor facility */}
+              <div className="space-y-1">
+                <label className="text-slate-300 font-bold block">Nearby facilities with transferable stock</label>
+                {nearbySources.length === 0 ? (
                   <div className="p-3 bg-slate-950 border border-amber-800/80 text-amber-300 rounded-xl text-xs flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>No other active destination hospitals found in directory.</span>
+                    <span>{stockLoading ? 'Searching nearby facilities…' : 'No active facility has matching stock above its protected minimum for this resource.'}</span>
                   </div>
                 ) : (
                   <select
-                    value={destHospitalId}
-                    onChange={(e) => setDestHospitalId(e.target.value)}
+                    value={selectedSourceKey}
+                    onChange={(e) => { setSelectedSourceKey(e.target.value); setQuantity(1); }}
                     className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none"
                     required
                   >
-                    {hospitals.map((h) => (
-                      <option key={h.hospital_id} value={h.hospital_id}>
-                        {h.hospital_name} ({h.hospital_code})
+                    {nearbySources.map((candidate) => (
+                      <option key={candidate.key} value={candidate.key}>
+                        {candidate.hospital_name} · {candidate.district} · {candidate.distance_km == null ? 'distance unavailable' : `${candidate.distance_km} km straight-line`} · {candidate.resource_name}: {candidate.transferable_quantity} {candidate.unit} releasable
                       </option>
                     ))}
                   </select>
                 )}
-                <p className="text-[10px] text-slate-500">Destination hospital must differ from source hospital.</p>
+                <p className="text-[10px] text-slate-500">Your assigned hospital receives the request. Facilities with coordinates are listed nearest first by straight-line distance.</p>
               </div>
 
-              {/* Resource Type & Name */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-bold block">Resource Category</label>
-                  <select
-                    value={resourceType}
-                    onChange={(e) => handleResourceTypeChange(e.target.value as TransferResourceType)}
-                    className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="ICU Beds">ICU Beds</option>
-                    <option value="General Beds">General Beds</option>
-                    <option value="Oxygen">Oxygen</option>
-                    <option value="Medicine">Medicine</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-bold block">Recorded source inventory</label>
-                  <select value={resourceName} onChange={(e) => setResourceName(e.target.value)} disabled={stockLoading || stockOptions.length === 0}
-                    className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none" required>
-                    {stockOptions.length === 0 && <option value="">No transferable stock</option>}
-                    {stockOptions.map((option) => <option key={option.key} value={option.key}>{option.label} · {option.transferable} {option.unit} transferable</option>)}
-                  </select>
-                </div>
+              <div className="space-y-1">
+                <label className="text-slate-300 font-bold block">Selected item</label>
+                <div className="w-full bg-slate-950 border border-slate-800 text-slate-200 p-2.5 rounded-xl min-h-10">{selectedStock?.resource_name || 'No nearby item available'}</div>
               </div>
-              {stockLoading ? <p className="text-[10px] text-slate-400">Loading source inventory…</p> : stockError ? <p className="text-[10px] text-rose-300">{stockError}</p> : selectedStock ? <p className="text-[10px] text-amber-300">Up to {selectedStock.transferable} {selectedStock.unit} available above the protected minimum. This is a synthetic prototype record.</p> : <p className="text-[10px] text-amber-300">No unique inventory item has stock available above its protected minimum.</p>}
+              {stockLoading ? <p className="text-[10px] text-slate-400">Checking nearby stock…</p> : stockError ? <p className="text-[10px] text-rose-300">{stockError}</p> : selectedStock ? <p className="text-[10px] text-amber-300">Your hospital is receiving. Up to {selectedStock.transferable_quantity} {selectedStock.unit} is releasable at this donor. This is a synthetic prototype record.</p> : <p className="text-[10px] text-amber-300">No unique inventory item has stock available above its protected minimum.</p>}
 
               {/* Quantity */}
               <div className="space-y-1">
@@ -393,7 +338,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                 <input
                   type="number"
                   min="1"
-                  max={selectedStock?.transferable || undefined}
+                  max={selectedStock?.transferable_quantity || undefined}
                   value={quantity}
                   onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none font-mono"
@@ -412,7 +357,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || hospitals.length === 0 || stockLoading || !selectedStock || quantity > (selectedStock?.transferable || 0)}
+                  disabled={submitting || nearbySources.length === 0 || stockLoading || !selectedStock || quantity > (selectedStock?.transferable_quantity || 0)}
                   className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-blue-950/50"
                 >
                   {submitting ? (
