@@ -7,19 +7,14 @@ export const INCIDENT_SCENARIO_LABELS = [
 ] as const;
 export type IncidentScenarioLabel = typeof INCIDENT_SCENARIO_LABELS[number];
 
-export const INCIDENT_REVIEW_REASONS = [
-  'Reviewed aggregate counts and planning assumptions.',
-  'Adjusted estimates after reviewing aggregate counts and planning assumptions.',
-  'Rejected aggregate scenario; counts or planning assumptions need revision.'
-] as const;
-export type IncidentReviewReason = typeof INCIDENT_REVIEW_REASONS[number];
-
-export function getIncidentReviewReason(
-  decision: 'approved' | 'rejected',
-  adjustments: Record<string, number>
-): IncidentReviewReason {
-  if (decision === 'rejected') return INCIDENT_REVIEW_REASONS[2];
-  return Object.keys(adjustments).length ? INCIDENT_REVIEW_REASONS[1] : INCIDENT_REVIEW_REASONS[0];
+export function normalizeIncidentReviewReason(reason: string): string {
+  const normalized = reason.trim();
+  if (normalized.length < 8) throw new Error('Add a review reason with at least 8 characters.');
+  if (normalized.length > 500) throw new Error('Keep the review reason to 500 characters or fewer.');
+  if (/[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}/.test(normalized) || normalized.replace(/\D/g, '').length >= 10) {
+    throw new Error('Review reasons cannot include email addresses or phone numbers.');
+  }
+  return normalized;
 }
 
 export interface IncidentPlanRecord {
@@ -97,7 +92,7 @@ export async function createIncidentPlan(input: {
   if (error) throw error;
 }
 
-export async function reviewIncidentPlan(input: { versionId: string; decision: 'approved' | 'rejected'; reason: IncidentReviewReason; adjustments?: Record<string, number> }): Promise<void> {
+export async function reviewIncidentPlan(input: { versionId: string; decision: 'approved' | 'rejected'; reason: string; adjustments?: Record<string, number> }): Promise<void> {
   const { error } = await supabase.rpc('review_incident_plan', {
     p_version_id: input.versionId,
     p_decision: input.decision,
