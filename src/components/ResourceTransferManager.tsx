@@ -58,6 +58,9 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
+  const [neededBy, setNeededBy] = useState('');
+  const [urgency, setUrgency] = useState<'Routine' | 'Urgent' | 'Critical'>('Routine');
+  const [reasonCategory, setReasonCategory] = useState('Stock depletion');
   const [transitioningTransferId, setTransitioningTransferId] = useState<string | null>(null);
   const transferAttemptRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
 
@@ -155,11 +158,17 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
       setFormError('Choose a nearby source and a quantity within its stock available above the protected minimum.');
       return;
     }
+    const requestedNeedBy = new Date(neededBy);
+    if (!neededBy || Number.isNaN(requestedNeedBy.getTime()) || requestedNeedBy.getTime() <= Date.now()) {
+      setFormError('Choose a need-by time in the future.');
+      return;
+    }
 
     setSubmitting(true);
     try {
       const fingerprint = JSON.stringify([
-        receivingHospitalId, selectedStock.source_hospital_id, resourceType, selectedStock.key, quantity
+        receivingHospitalId, selectedStock.source_hospital_id, resourceType, selectedStock.key, quantity,
+        requestedNeedBy.toISOString(), urgency, reasonCategory
       ]);
       if (!transferAttemptRef.current || transferAttemptRef.current.fingerprint !== fingerprint) {
         transferAttemptRef.current = { fingerprint, idempotencyKey: crypto.randomUUID() };
@@ -170,6 +179,9 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
         resource_name: selectedStock.resource_name,
         resource_identity: selectedStock.resource_identity,
         quantity: Number(quantity),
+        needed_by: requestedNeedBy.toISOString(),
+        urgency,
+        reason_category: reasonCategory,
         idempotency_key: transferAttemptRef.current.idempotencyKey
       });
 
@@ -262,6 +274,11 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
           <button
             onClick={() => {
               setFormError(null);
+              const defaultNeedBy = new Date(Date.now() + 4 * 60 * 60 * 1000);
+              defaultNeedBy.setMinutes(0, 0, 0);
+              setNeededBy(new Date(defaultNeedBy.getTime() - defaultNeedBy.getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
+              setUrgency('Routine');
+              setReasonCategory('Stock depletion');
               setShowCreateModal(true);
             }}
             disabled={userProfile?.role !== 'hospital_admin' || !userHospitalId}
@@ -385,6 +402,40 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-bold block" htmlFor="transfer-needed-by">Needed by</label>
+                  <input
+                    id="transfer-needed-by"
+                    type="datetime-local"
+                    value={neededBy}
+                    min={new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)}
+                    onChange={(e) => setNeededBy(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-bold block" htmlFor="transfer-urgency">Logistics urgency</label>
+                  <select id="transfer-urgency" value={urgency} onChange={(e) => setUrgency(e.target.value as typeof urgency)} className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none">
+                    <option value="Routine">Routine</option>
+                    <option value="Urgent">Urgent</option>
+                    <option value="Critical">Critical</option>
+                  </select>
+                  <p className="text-[10px] text-slate-500">Requester estimate for logistics; it is not a clinical triage decision.</p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-slate-300 font-bold block" htmlFor="transfer-reason">Reason category</label>
+                <select id="transfer-reason" value={reasonCategory} onChange={(e) => setReasonCategory(e.target.value)} className="w-full bg-slate-950 border border-slate-800 text-white p-2.5 rounded-xl focus:border-blue-500 focus:outline-none">
+                  <option value="Stock depletion">Stock depletion</option>
+                  <option value="Demand surge">Demand surge</option>
+                  <option value="Supply disruption">Supply disruption</option>
+                  <option value="Equipment failure">Equipment failure</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
               {/* Submit Buttons */}
               <div className="flex gap-2 pt-2">
                 <button
@@ -458,6 +509,8 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                     <td className="py-3 px-3 font-sans">
                       <span className="font-bold text-white block">{t.resource_name || t.resource_type}</span>
                       <span className="text-[10px] text-slate-500">{t.resource_type}</span>
+                      {t.urgency && <span className="text-[10px] text-amber-300 block">{t.urgency} logistics priority · {t.reason_category || 'Reason not recorded'}</span>}
+                      {t.needed_by && <span className="text-[10px] text-slate-400 block">Needed by {new Date(t.needed_by).toLocaleString()}</span>}
                     </td>
                     <td className="py-3 px-3 font-bold text-sky-400">
                       {t.approved_quantity ?? t.quantity}
