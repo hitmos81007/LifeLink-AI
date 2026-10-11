@@ -247,6 +247,7 @@ export interface OxygenInventoryTable {
   oxygen_type: OxygenType;
   total_capacity: number;
   available_capacity: number;
+  reserved_capacity: number;
   minimum_threshold: number;
   unit: string;
   created_at: string;
