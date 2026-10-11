@@ -97,6 +97,7 @@ export const HospitalDashboard: React.FC = () => {
   const [medExpiryDate, setMedExpiryDate] = useState('');
   const [addingMed, setAddingMed] = useState(false);
   const [editingMedId, setEditingMedId] = useState<string | null>(null);
+  const [editingMedUpdatedAt, setEditingMedUpdatedAt] = useState<string | null>(null);
   const [editMedicine, setEditMedicine] = useState<Pick<MedicineInventoryTable, 'medicine_name' | 'category' | 'dosage' | 'manufacturer' | 'current_stock' | 'minimum_stock' | 'unit' | 'expiry_date'> | null>(null);
   const [savingMed, setSavingMed] = useState(false);
 
@@ -387,6 +388,7 @@ export const HospitalDashboard: React.FC = () => {
 
   const beginEditMedicine = (medicine: MedicineInventoryTable) => {
     setEditingMedId(medicine.medicine_inventory_id);
+    setEditingMedUpdatedAt(medicine.updated_at);
     setEditMedicine({
       medicine_name: medicine.medicine_name,
       category: medicine.category,
@@ -401,12 +403,13 @@ export const HospitalDashboard: React.FC = () => {
 
   const handleSaveMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingMedId || !editMedicine) return;
+    if (!editingMedId || !editMedicine || !editingMedUpdatedAt) return;
     setSavingMed(true);
     try {
-      await updateMedicineItem(editingMedId, editMedicine);
+      await updateMedicineItem(editingMedId, editMedicine, editingMedUpdatedAt);
       triggerToast('Medicine inventory record updated.');
       setEditingMedId(null);
+      setEditingMedUpdatedAt(null);
       setEditMedicine(null);
       await fetchData();
     } catch (err: any) {
@@ -979,7 +982,7 @@ export const HospitalDashboard: React.FC = () => {
                         <label className="text-slate-400">Expiry date<input type="date" value={editMedicine.expiry_date || ''} onChange={(e) => setEditMedicine({ ...editMedicine, expiry_date: e.target.value || null })} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white" /></label>
                       </div>
                       <div className="flex justify-end gap-2">
-                        <button type="button" disabled={savingMed} onClick={() => { setEditingMedId(null); setEditMedicine(null); }} className="rounded-lg border border-slate-700 px-3 py-2 text-slate-300 disabled:opacity-50">Cancel</button>
+                        <button type="button" disabled={savingMed} onClick={() => { setEditingMedId(null); setEditingMedUpdatedAt(null); setEditMedicine(null); }} className="rounded-lg border border-slate-700 px-3 py-2 text-slate-300 disabled:opacity-50">Cancel</button>
                         <button type="submit" disabled={savingMed} className="rounded-lg bg-emerald-700 px-3 py-2 font-bold text-white disabled:opacity-50">{savingMed ? 'Saving…' : 'Save record'}</button>
                       </div>
                     </form>

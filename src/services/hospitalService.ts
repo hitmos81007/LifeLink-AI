@@ -412,33 +412,26 @@ export async function addMedicineItem(item: {
   unit: string;
   expiry_date?: string | null;
 }): Promise<MedicineInventoryTable> {
-  if (item.current_stock < 0 || item.minimum_stock < 0) {
-    throw new Error('Medicine stock numbers must be non-negative.');
+  if (!Number.isInteger(item.current_stock) || item.current_stock < 0
+      || !Number.isInteger(item.minimum_stock) || item.minimum_stock < 0) {
+    throw new Error('Medicine stock values must be non-negative whole numbers.');
   }
-  if (!item.medicine_name?.trim() || !item.dosage?.trim() || !item.unit?.trim()) {
+  if (!item.hospital_id || !item.medicine_name?.trim() || !item.dosage?.trim() || !item.unit?.trim()) {
     throw new Error('Medicine name, dosage, and stock unit are required.');
   }
-
-  const now = new Date().toISOString();
-  const payload = {
-    hospital_id: item.hospital_id,
-    medicine_name: item.medicine_name.trim(),
-    category: item.category,
-    dosage: item.dosage.trim(),
-    manufacturer: item.manufacturer?.trim() || null,
-    current_stock: item.current_stock,
-    minimum_stock: item.minimum_stock,
-    unit: item.unit.trim(),
-    expiry_date: item.expiry_date || null,
-    created_at: now,
-    updated_at: now
-  };
-
-  const { data, error } = await supabase
-    .from('medicine_inventory')
-    .insert([payload])
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('save_medicine_inventory', {
+    p_hospital_id: item.hospital_id,
+    p_medicine_name: item.medicine_name.trim(),
+    p_category: item.category,
+    p_dosage: item.dosage.trim(),
+    p_manufacturer: item.manufacturer?.trim() || null,
+    p_current_stock: item.current_stock,
+    p_minimum_stock: item.minimum_stock,
+    p_unit: item.unit.trim(),
+    p_expiry_date: item.expiry_date || null,
+    p_medicine_inventory_id: null,
+    p_expected_updated_at: null
+  });
 
   if (error || !data) {
     console.error('[Supabase Error] addMedicineItem failed:', error?.message);
@@ -450,30 +443,37 @@ export async function addMedicineItem(item: {
 
 export async function updateMedicineItem(
   medicineInventoryId: string,
-  updates: Pick<MedicineInventoryTable, 'medicine_name' | 'category' | 'dosage' | 'manufacturer' | 'current_stock' | 'minimum_stock' | 'unit' | 'expiry_date'>
+  updates: Pick<MedicineInventoryTable, 'medicine_name' | 'category' | 'dosage' | 'manufacturer' | 'current_stock' | 'minimum_stock' | 'unit' | 'expiry_date'>,
+  expectedUpdatedAt: string
 ): Promise<MedicineInventoryTable> {
   if (!medicineInventoryId) throw new Error('Medicine inventory record is required.');
+  if (!expectedUpdatedAt) throw new Error('Refresh medicine inventory before saving changes.');
   if (!updates.medicine_name.trim() || !updates.dosage.trim() || !updates.unit.trim()) {
     throw new Error('Medicine name, dosage, and stock unit are required.');
   }
-  if (!Number.isFinite(updates.current_stock) || updates.current_stock < 0
-      || !Number.isFinite(updates.minimum_stock) || updates.minimum_stock < 0) {
-    throw new Error('Medicine stock and minimum values must be non-negative numbers.');
+  if (!Number.isInteger(updates.current_stock) || updates.current_stock < 0
+      || !Number.isInteger(updates.minimum_stock) || updates.minimum_stock < 0) {
+    throw new Error('Medicine stock and minimum values must be non-negative whole numbers.');
   }
 
-  const { data, error } = await supabase.from('medicine_inventory').update({
-    medicine_name: updates.medicine_name.trim(),
-    category: updates.category,
-    dosage: updates.dosage.trim(),
-    manufacturer: updates.manufacturer?.trim() || null,
-    current_stock: updates.current_stock,
-    minimum_stock: updates.minimum_stock,
-    unit: updates.unit.trim(),
-    expiry_date: updates.expiry_date || null,
-    updated_at: new Date().toISOString()
-  }).eq('medicine_inventory_id', medicineInventoryId).select().maybeSingle();
+  const { data, error } = await supabase.rpc('save_medicine_inventory', {
+    p_hospital_id: null,
+    p_medicine_name: updates.medicine_name.trim(),
+    p_category: updates.category,
+    p_dosage: updates.dosage.trim(),
+    p_manufacturer: updates.manufacturer?.trim() || null,
+    p_current_stock: updates.current_stock,
+    p_minimum_stock: updates.minimum_stock,
+    p_unit: updates.unit.trim(),
+    p_expiry_date: updates.expiry_date || null,
+    p_medicine_inventory_id: medicineInventoryId,
+    p_expected_updated_at: expectedUpdatedAt
+  });
 
   if (error || !data) {
+    if (error?.code === '40001') {
+      throw new Error('Medicine inventory changed since it was loaded. Refresh the dashboard and reapply your update.');
+    }
     throw new Error(`Failed to update medicine inventory: ${error?.message || 'No row returned'}`);
   }
   return data as MedicineInventoryTable;
