@@ -10,7 +10,7 @@ export const PrototypeDataNotice: React.FC = () => (
     <div className="space-y-1">
       <h2 className="text-xs font-bold uppercase tracking-wide">Prototype data only</h2>
       <p className="text-xs leading-relaxed text-amber-100/80">
-        Changes here are saved to the connected Supabase database and shared with this prototype's other views. Use fictional test values only; these records do not arrange real care, transport, or dispatch.
+        Changes here are saved to the connected Supabase database and shared with this prototype's other views. New rows and older rows you update are marked simulated; untouched rows with unknown origin are excluded from sharing and transfers. Use fictional values only; this does not arrange real care, transport, or dispatch.
       </p>
     </div>
   </aside>

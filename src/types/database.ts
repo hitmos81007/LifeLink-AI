@@ -75,6 +75,7 @@ export type HospitalStatus =
   | 'Maintenance';
 
 export type AccountStatus = 'pending' | 'active' | 'suspended' | 'revoked';
+export type InventorySourceType = 'seeded' | 'simulated' | 'unknown';
 
 export type HospitalType = 
   | 'Government' 
@@ -199,6 +200,7 @@ export interface AmbulanceTable {
   current_latitude: number | null;
   current_longitude: number | null;
   status: AmbulanceStatus;
+  source_type?: InventorySourceType;
   assigned_hospital: string | null; // FK -> hospitals.hospital_id
   created_at: string;
   updated_at: string;
@@ -212,6 +214,7 @@ export interface BloodInventoryTable {
   reserved_units: number;
   expired_units: number;
   minimum_threshold: number;
+  source_type?: InventorySourceType;
   last_restocked: string | null;
   created_at: string;
   updated_at: string;
@@ -225,6 +228,7 @@ export interface ICUInventoryTable {
   reserved_icu_beds: number;
   available_icu_beds: number;
   minimum_icu_beds: number;
+  source_type?: InventorySourceType;
   created_at: string;
   updated_at: string;
 }
@@ -237,6 +241,7 @@ export interface GeneralBedInventoryTable {
   reserved_beds: number;
   available_beds: number;
   minimum_beds: number;
+  source_type?: InventorySourceType;
   created_at: string;
   updated_at: string;
 }
@@ -250,6 +255,7 @@ export interface OxygenInventoryTable {
   reserved_capacity: number;
   minimum_threshold: number;
   unit: string;
+  source_type?: InventorySourceType;
   created_at: string;
   updated_at: string;
 }
@@ -266,6 +272,7 @@ export interface MedicineInventoryTable {
   minimum_stock: number;
   unit: string;
   expiry_date: string | null;
+  source_type?: InventorySourceType;
   created_at: string;
   updated_at: string;
 }
