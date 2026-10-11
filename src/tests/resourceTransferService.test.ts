@@ -3,7 +3,53 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { rpcMock, fromMock } = vi.hoisted(() => ({ rpcMock: vi.fn(), fromMock: vi.fn() }));
 vi.mock('../lib/supabase/client', () => ({ supabase: { rpc: rpcMock, from: fromMock } }));
 
-import { createTransferRequest, getResourceTransfers, updateTransferStatus } from '../services/resourceTransferService';
+import { createInboundTransferRequest, createTransferRequest, getNearbyTransferSources, getResourceTransfers, updateTransferStatus } from '../services/resourceTransferService';
+
+describe('location-based inbound resource requests', () => {
+  beforeEach(() => rpcMock.mockResolvedValue({ data: [], error: null }));
+  afterEach(() => vi.clearAllMocks());
+
+  it('queries nearby donors for the selected resource and normalizes numeric distance and stock', async () => {
+    rpcMock.mockResolvedValue({ data: [{
+      source_hospital_id: 'donor-1', hospital_name: 'Nearby Hospital', hospital_code: 'H-1',
+      district: 'North', state: 'Example', latitude: 12, longitude: 77, distance_km: '4.3',
+      resource_type: 'Oxygen', resource_name: 'Medical Oxygen',
+      resource_identity: { resource_type: 'Oxygen', name: 'Medical Oxygen', unit: 'cylinders' },
+      transferable_quantity: '8', unit: 'cylinders'
+    }], error: null });
+
+    const sources = await getNearbyTransferSources('Oxygen');
+    expect(rpcMock).toHaveBeenCalledWith('find_nearby_transfer_sources', { p_resource_type: 'Oxygen' });
+    expect(sources[0]).toMatchObject({ distance_km: 4.3, transferable_quantity: 8, source_hospital_id: 'donor-1' });
+    expect(sources[0].key).toContain('donor-1');
+  });
+
+  it('creates an inbound request against the selected nearby source and verifies the pending row', async () => {
+    rpcMock.mockResolvedValue({ data: {
+      transfer_id: 'transfer-1', source_hospital_id: 'donor-1', status: 'Pending'
+    }, error: null });
+    const identity = { resource_type: 'General Beds', name: null };
+    await expect(createInboundTransferRequest({
+      source_hospital_id: 'donor-1', resource_type: 'General Beds', resource_name: 'General Beds',
+      resource_identity: identity, quantity: 2, idempotency_key: '2de35681-4a5b-4a10-a181-57f749fbe44a'
+    })).resolves.toMatchObject({ success: true, data: { transfer_id: 'transfer-1' } });
+    expect(rpcMock).toHaveBeenCalledWith('request_inbound_resource_transfer', expect.objectContaining({
+      p_source_hospital_id: 'donor-1', p_resource_type: 'General Beds', p_quantity: 2,
+      p_resource_identity: identity, p_idempotency_key: '2de35681-4a5b-4a10-a181-57f749fbe44a'
+    }));
+  });
+
+  it('rejects invalid inbound quantities before calling Supabase', async () => {
+    rpcMock.mockClear();
+    for (const quantity of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      await expect(createInboundTransferRequest({
+        source_hospital_id: 'donor-1', resource_type: 'ICU Beds', resource_name: 'ICU Beds',
+        resource_identity: { resource_type: 'ICU Beds' }, quantity
+      })).resolves.toMatchObject({ success: false });
+    }
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('resource transfer request idempotency', () => {
   beforeEach(() => {
