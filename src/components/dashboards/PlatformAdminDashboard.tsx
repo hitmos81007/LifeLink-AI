@@ -22,6 +22,7 @@ export const PlatformAdminDashboard: React.FC = () => {
   const { userProfile } = useAuth();
   const [accounts, setAccounts] = useState<ProviderAccountForReview[]>([]);
   const [history, setHistory] = useState<ProviderAccountReviewEvent[]>([]);
+  const [accountsUnavailable, setAccountsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -43,29 +44,50 @@ export const PlatformAdminDashboard: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setAccountsUnavailable(false);
     try {
-      const [nextAccounts, nextHistory, nextDemoOptions, nextDemoHistory] = await Promise.all([
-        getProviderAccountsForReview(), getProviderAccountReviewHistory(), getDemoRoleProvisioningOptions(), getDemoRoleProvisioningHistory()
-      ]);
-      let nextCandidates: SyntheticDemoRegistrationCandidate[] = [];
-      try {
-        nextCandidates = await getSyntheticDemoRegistrationCandidates();
-        setDemoProvisioningSchemaReady(true);
-      } catch {
-        // Fail closed while an older database migration is still pending.
-        setDemoProvisioningSchemaReady(false);
-      }
+      // Provider verification is the core admin workflow. Keep it independent
+      // of the optional synthetic-demo role tools so a missing demo migration
+      // cannot make pending provider accounts disappear from this dashboard.
+      const nextAccounts = await getProviderAccountsForReview();
       setAccounts(nextAccounts);
-      setHistory(nextHistory);
-      setDemoOptions(nextDemoOptions);
-      setDemoHistory(nextDemoHistory);
-      setRegistrationCandidates(nextCandidates);
-      setRegistrationUserId((current) => current && nextCandidates.some((candidate) => candidate.user_id === current) ? current : '');
-      setDemoUserId((current) => current && nextDemoOptions.accounts.some((account) => account.user_id === current) ? current : '');
+      try {
+        setHistory(await getProviderAccountReviewHistory());
+      } catch (historyError: any) {
+        setHistory([]);
+        setError(`Provider accounts loaded, but review history is unavailable: ${historyError?.message || 'database request failed'}`);
+      }
     } catch (err: any) {
+      setAccounts([]);
+      setHistory([]);
+      setAccountsUnavailable(true);
       setError(err?.message || 'Provider review data could not be loaded.');
     } finally {
       setLoading(false);
+    }
+
+    // Demo-role provisioning is supplementary and can be unavailable until
+    // its own schema migration is installed. It must not block provider review.
+    const [demoOptionsResult, demoHistoryResult, candidatesResult] = await Promise.allSettled([
+      getDemoRoleProvisioningOptions(),
+      getDemoRoleProvisioningHistory(),
+      getSyntheticDemoRegistrationCandidates()
+    ]);
+    if (demoOptionsResult.status === 'fulfilled' && demoHistoryResult.status === 'fulfilled' && candidatesResult.status === 'fulfilled') {
+      const nextDemoOptions = demoOptionsResult.value;
+      setDemoOptions(nextDemoOptions);
+      setDemoHistory(demoHistoryResult.value);
+      setDemoUserId((current) => current && nextDemoOptions.accounts.some((account) => account.user_id === current) ? current : '');
+      setRegistrationCandidates(candidatesResult.value);
+      setRegistrationUserId((current) => current && candidatesResult.value.some((candidate) => candidate.user_id === current) ? current : '');
+      setDemoProvisioningSchemaReady(true);
+    } else {
+      setDemoOptions({ accounts: [], hospitals: [] });
+      setDemoHistory([]);
+      setDemoUserId('');
+      setRegistrationCandidates([]);
+      setRegistrationUserId('');
+      setDemoProvisioningSchemaReady(false);
     }
   }, []);
 
@@ -188,7 +210,7 @@ export const PlatformAdminDashboard: React.FC = () => {
 
       <section className="space-y-3">
         <div className="flex items-center gap-2"><UserRoundCog className="h-5 w-5 text-violet-400" /><h2 className="text-base font-black text-white">Provider accounts</h2></div>
-        {loading ? <p className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-400" role="status">Loading provider accounts…</p> : accounts.length === 0 ? <p className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-400">No provider accounts are available for review.</p> : (
+        {loading ? <p className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-400" role="status">Loading provider accounts…</p> : accountsUnavailable ? <p className="rounded-xl border border-rose-800 bg-rose-950/30 p-6 text-sm text-rose-200" role="status">Provider accounts could not be loaded. Review the error above and retry.</p> : accounts.length === 0 ? <p className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-400">No provider accounts are available for review.</p> : (
           <div className="grid gap-3 lg:grid-cols-2">
             {accounts.map((account) => (
               <article key={account.user_id} className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
