@@ -10,7 +10,7 @@ import {
   ProviderDecision,
   reviewProviderAccount
 } from '../../services/providerAccountService';
-import { DemoRoleOptions, DemoRoleProvisioningEvent, DemoProvisionableRole, getDemoRoleProvisioningHistory, getDemoRoleProvisioningOptions, provisionDemoAccountRole, RESTRICTED_DEMO_ROLES } from '../../services/demoRoleProvisioningService';
+import { DemoRoleOptions, DemoRoleProvisioningEvent, DemoProvisionableRole, getDemoRoleProvisioningHistory, getDemoRoleProvisioningOptions, getSyntheticDemoRegistrationCandidates, provisionDemoAccountRole, registerSyntheticDemoAccount, RESTRICTED_DEMO_ROLES, SyntheticDemoRegistrationCandidate } from '../../services/demoRoleProvisioningService';
 
 const decisionLabel: Record<ProviderDecision, string> = {
   activate: 'Activate provider',
@@ -29,6 +29,11 @@ export const PlatformAdminDashboard: React.FC = () => {
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [demoOptions, setDemoOptions] = useState<DemoRoleOptions>({ accounts: [], hospitals: [] });
+  const [demoProvisioningSchemaReady, setDemoProvisioningSchemaReady] = useState(true);
+  const [registrationCandidates, setRegistrationCandidates] = useState<SyntheticDemoRegistrationCandidate[]>([]);
+  const [registrationUserId, setRegistrationUserId] = useState('');
+  const [registrationReason, setRegistrationReason] = useState('');
+  const [confirmedSynthetic, setConfirmedSynthetic] = useState(false);
   const [demoHistory, setDemoHistory] = useState<DemoRoleProvisioningEvent[]>([]);
   const [demoUserId, setDemoUserId] = useState('');
   const [demoRole, setDemoRole] = useState<DemoProvisionableRole>('clinician_reviewer');
@@ -42,10 +47,20 @@ export const PlatformAdminDashboard: React.FC = () => {
       const [nextAccounts, nextHistory, nextDemoOptions, nextDemoHistory] = await Promise.all([
         getProviderAccountsForReview(), getProviderAccountReviewHistory(), getDemoRoleProvisioningOptions(), getDemoRoleProvisioningHistory()
       ]);
+      let nextCandidates: SyntheticDemoRegistrationCandidate[] = [];
+      try {
+        nextCandidates = await getSyntheticDemoRegistrationCandidates();
+        setDemoProvisioningSchemaReady(true);
+      } catch {
+        // Fail closed while an older database migration is still pending.
+        setDemoProvisioningSchemaReady(false);
+      }
       setAccounts(nextAccounts);
       setHistory(nextHistory);
       setDemoOptions(nextDemoOptions);
       setDemoHistory(nextDemoHistory);
+      setRegistrationCandidates(nextCandidates);
+      setRegistrationUserId((current) => current && nextCandidates.some((candidate) => candidate.user_id === current) ? current : '');
       setDemoUserId((current) => current && nextDemoOptions.accounts.some((account) => account.user_id === current) ? current : '');
     } catch (err: any) {
       setError(err?.message || 'Provider review data could not be loaded.');
@@ -84,18 +99,36 @@ export const PlatformAdminDashboard: React.FC = () => {
   };
 
   const provisionRole = async () => {
+    const hospitalRole = demoRole === 'hospital_admin' || demoRole === 'hospital_approver';
     if (!demoUserId || demoReason.trim().length < 3 || demoReason.trim().length > 500 || saving ||
-        (demoRole === 'hospital_approver' && !demoHospitalId)) return;
+        (hospitalRole && !demoHospitalId)) return;
     setSaving(true);
     setError(null);
     try {
       const account = demoOptions.accounts.find((candidate) => candidate.user_id === demoUserId);
-      await provisionDemoAccountRole({ userId: demoUserId, role: demoRole, hospitalId: demoRole === 'hospital_approver' ? demoHospitalId : null, reason: demoReason });
+      await provisionDemoAccountRole({ userId: demoUserId, role: demoRole, hospitalId: hospitalRole ? demoHospitalId : null, reason: demoReason });
       setNotice(`${account?.full_name || 'Demo account'} was assigned ${RESTRICTED_DEMO_ROLES.find((option) => option.role === demoRole)?.label}.`);
       setDemoUserId(''); setDemoHospitalId(''); setDemoReason('');
       await load();
     } catch (err: any) {
       setError(err?.message || 'Demo role could not be provisioned.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const registerDemoAccount = async () => {
+    if (!registrationUserId || !confirmedSynthetic || registrationReason.trim().length < 3 || registrationReason.trim().length > 500 || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const account = registrationCandidates.find((candidate) => candidate.user_id === registrationUserId);
+      await registerSyntheticDemoAccount({ userId: registrationUserId, reason: registrationReason, confirmedSynthetic });
+      setNotice(`${account?.full_name || 'Account'} was registered as dedicated synthetic demo data.`);
+      setRegistrationUserId(''); setRegistrationReason(''); setConfirmedSynthetic(false);
+      await load();
+    } catch (err: any) {
+      setError(err?.message || 'Synthetic demo account could not be registered.');
     } finally {
       setSaving(false);
     }
@@ -120,14 +153,25 @@ export const PlatformAdminDashboard: React.FC = () => {
       {notice && <div className="flex items-center gap-2 rounded-xl border border-emerald-800 bg-emerald-950/40 p-4 text-sm text-emerald-200" role="status"><CheckCircle2 className="h-4 w-4" />{notice}</div>}
 
       {hasCapability(userProfile?.role, 'manage_demo_account_roles') && <section className="space-y-4 rounded-2xl border border-sky-800/70 bg-sky-950/20 p-5" aria-labelledby="demo-role-heading">
-        <div className="flex items-center gap-2"><UserPlus className="h-5 w-5 text-sky-400" /><div><h2 id="demo-role-heading" className="font-black text-white">Assign a restricted demo role</h2><p className="mt-1 text-xs text-slate-400">Only email-confirmed, active patient accounts appear. Each assignment records the admin, previous role, hospital link, and reason.</p></div></div>
+        <div className="flex items-center gap-2"><UserPlus className="h-5 w-5 text-sky-400" /><div><h2 id="demo-role-heading" className="font-black text-white">Assign a restricted demo role</h2><p className="mt-1 text-xs text-slate-400">Only accounts explicitly registered as dedicated synthetic data appear here. Each role assignment records the admin, previous role, hospital link, and reason.</p></div></div>
+        {!demoProvisioningSchemaReady ? <p className="rounded-xl border border-amber-800/60 bg-amber-950/30 p-4 text-sm text-amber-200" role="status">Role assignment is temporarily disabled until the synthetic demo account migration is applied in Supabase.</p> : <>
+        <div className="space-y-3 rounded-xl border border-amber-800/60 bg-amber-950/25 p-4">
+          <div><h3 className="text-sm font-bold text-amber-100">Register a dedicated synthetic account</h3><p className="mt-1 text-xs text-amber-200/80">Review the account first. Do not register a real patient account for testing.</p></div>
+          {registrationCandidates.length === 0 ? <p className="text-xs text-slate-400">No unregistered confirmed patient accounts are available for review.</p> : <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-xs font-bold text-slate-300">Patient account to review<select value={registrationUserId} onChange={(event) => setRegistrationUserId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-white"><option value="">Select account</option>{registrationCandidates.map((account) => <option key={account.user_id} value={account.user_id}>{account.full_name} · {account.email}</option>)}</select></label>
+            <label className="flex items-center gap-2 self-end rounded-lg border border-amber-900/60 bg-slate-900 p-3 text-xs text-amber-100"><input type="checkbox" checked={confirmedSynthetic} onChange={(event) => setConfirmedSynthetic(event.target.checked)} />I verified this is a dedicated synthetic test account</label>
+            <label className="space-y-1 text-xs font-bold text-slate-300 md:col-span-2">Required verification reason<textarea value={registrationReason} onChange={(event) => setRegistrationReason(event.target.value)} maxLength={500} rows={2} className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-white" placeholder="Record how you verified this account is reserved for synthetic testing." /></label>
+            <div className="md:col-span-2 flex justify-end"><button type="button" onClick={() => void registerDemoAccount()} disabled={saving || !registrationUserId || !confirmedSynthetic || registrationReason.trim().length < 3} className="rounded-lg border border-amber-700 px-4 py-2 text-xs font-bold text-amber-100 hover:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving…' : 'Register synthetic account'}</button></div>
+          </div>}
+        </div>
         {demoOptions.accounts.length === 0 ? <p className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">No confirmed active patient accounts are ready for role assignment.</p> : <div className="grid gap-3 md:grid-cols-2">
-          <label className="space-y-1 text-xs font-bold text-slate-300">Confirmed patient demo account<select value={demoUserId} onChange={(event) => setDemoUserId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-white"><option value="">Select account</option>{demoOptions.accounts.map((account) => <option key={account.user_id} value={account.user_id}>{account.full_name} · {account.email}</option>)}</select></label>
+          <label className="space-y-1 text-xs font-bold text-slate-300">Registered synthetic account<select value={demoUserId} onChange={(event) => setDemoUserId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-white"><option value="">Select account</option>{demoOptions.accounts.map((account) => <option key={account.user_id} value={account.user_id}>{account.full_name} · {account.email}</option>)}</select></label>
           <label className="space-y-1 text-xs font-bold text-slate-300">New role<select value={demoRole} onChange={(event) => { setDemoRole(event.target.value as DemoProvisionableRole); setDemoHospitalId(''); }} className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-white">{RESTRICTED_DEMO_ROLES.map((option) => <option key={option.role} value={option.role}>{option.label}</option>)}</select></label>
-          {demoRole === 'hospital_approver' && <label className="space-y-1 text-xs font-bold text-slate-300 md:col-span-2">Verified hospital<select value={demoHospitalId} onChange={(event) => setDemoHospitalId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-white"><option value="">Select hospital</option>{demoOptions.hospitals.map((hospital) => <option key={hospital.hospital_id} value={hospital.hospital_id}>{hospital.hospital_name} · {hospital.district}, {hospital.state}</option>)}</select></label>}
+          {(demoRole === 'hospital_admin' || demoRole === 'hospital_approver') && <label className="space-y-1 text-xs font-bold text-slate-300 md:col-span-2">Synthetic demo hospital<select value={demoHospitalId} onChange={(event) => setDemoHospitalId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-white"><option value="">Select hospital</option>{demoOptions.hospitals.map((hospital) => <option key={hospital.hospital_id} value={hospital.hospital_id}>{hospital.hospital_name} · {hospital.district}, {hospital.state}</option>)}</select></label>}
           <label className="space-y-1 text-xs font-bold text-slate-300 md:col-span-2">Required assignment reason<textarea value={demoReason} onChange={(event) => setDemoReason(event.target.value)} maxLength={500} rows={2} className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-white" placeholder="Explain why this confirmed demo account needs the role." /></label>
-          <div className="md:col-span-2 flex justify-end"><button type="button" onClick={() => void provisionRole()} disabled={saving || !demoUserId || demoReason.trim().length < 3 || (demoRole === 'hospital_approver' && !demoHospitalId)} className="rounded-lg bg-sky-700 px-4 py-2 text-xs font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving…' : 'Assign role'}</button></div>
+          <div className="md:col-span-2 flex justify-end"><button type="button" onClick={() => void provisionRole()} disabled={saving || !demoUserId || demoReason.trim().length < 3 || ((demoRole === 'hospital_admin' || demoRole === 'hospital_approver') && !demoHospitalId)} className="rounded-lg bg-sky-700 px-4 py-2 text-xs font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving…' : 'Assign role'}</button></div>
         </div>}
+        </>}
       </section>}
 
       {selected && (

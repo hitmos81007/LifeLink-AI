@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase/client';
 import { AppRole } from '../types/roles';
 
-export type DemoProvisionableRole = 'clinician_reviewer' | 'government_admin' | 'hospital_approver';
+export type DemoProvisionableRole = 'clinician_reviewer' | 'government_admin' | 'hospital_admin' | 'hospital_approver';
 export interface DemoRoleAccount {
   user_id: string;
   full_name: string;
@@ -18,6 +18,7 @@ export interface DemoRoleOptions {
   accounts: DemoRoleAccount[];
   hospitals: DemoRoleHospital[];
 }
+export type SyntheticDemoRegistrationCandidate = DemoRoleAccount;
 export interface DemoRoleProvisioningEvent {
   event_id: string;
   user_id: string;
@@ -52,6 +53,38 @@ export async function getDemoRoleProvisioningOptions(): Promise<DemoRoleOptions>
   return { accounts, hospitals };
 }
 
+export async function getSyntheticDemoRegistrationCandidates(): Promise<SyntheticDemoRegistrationCandidate[]> {
+  const { data, error } = await supabase.rpc('get_synthetic_demo_registration_candidates');
+  if (error) throw new Error(`Could not load accounts to review: ${error.message}`);
+  if (!Array.isArray(data)) throw new Error('Synthetic demo registration candidates returned an invalid response.');
+  const candidates = data.filter((row): row is SyntheticDemoRegistrationCandidate => isRecord(row) &&
+    typeof row.user_id === 'string' && typeof row.full_name === 'string' &&
+    typeof row.email === 'string' && typeof row.created_at === 'string');
+  if (candidates.length !== data.length) throw new Error('Synthetic demo registration candidates included malformed records.');
+  return candidates;
+}
+
+export async function registerSyntheticDemoAccount(input: {
+  userId: string;
+  reason: string;
+  confirmedSynthetic: boolean;
+}): Promise<void> {
+  const reason = input.reason.trim();
+  if (!input.userId || input.confirmedSynthetic !== true || reason.length < 3 || reason.length > 500) {
+    throw new Error('Select a patient account, confirm it is dedicated synthetic data, and provide a valid reason.');
+  }
+  const { data, error } = await supabase.rpc('register_synthetic_demo_account', {
+    p_user_id: input.userId,
+    p_reason: reason,
+    p_confirmed_synthetic: true
+  });
+  if (error) throw new Error(`Synthetic demo account was not registered: ${error.message}`);
+  if (!isRecord(data) || data.user_id !== input.userId || data.is_active !== true ||
+      !['registered', 'reactivated'].includes(String(data.action))) {
+    throw new Error('No verified synthetic account registration was returned. Refresh and verify the account.');
+  }
+}
+
 export async function getDemoRoleProvisioningHistory(): Promise<DemoRoleProvisioningEvent[]> {
   const { data, error } = await supabase.from('platform_role_provisioning_audit')
     .select('event_id,user_id,prior_role,new_role,reason,actor_id,prior_hospital_id,new_hospital_id,created_at')
@@ -68,27 +101,29 @@ export async function provisionDemoAccountRole(input: {
   reason: string;
 }): Promise<void> {
   const reason = input.reason.trim();
-  if (!input.userId || !['clinician_reviewer', 'government_admin', 'hospital_approver'].includes(input.role) ||
+  const hospitalRole = input.role === 'hospital_admin' || input.role === 'hospital_approver';
+  if (!input.userId || !['clinician_reviewer', 'government_admin', 'hospital_admin', 'hospital_approver'].includes(input.role) ||
       reason.length < 3 || reason.length > 500 ||
-      (input.role === 'hospital_approver') !== Boolean(input.hospitalId)) {
+      hospitalRole !== Boolean(input.hospitalId)) {
     throw new Error('Choose a confirmed demo account, a permitted role, and a valid reason.');
   }
   const { data, error } = await supabase.rpc('provision_demo_account_role', {
     p_user_id: input.userId,
     p_new_role: input.role,
-    p_hospital_id: input.role === 'hospital_approver' ? input.hospitalId : null,
+    p_hospital_id: hospitalRole ? input.hospitalId : null,
     p_reason: reason
   });
   if (error) throw new Error(`Demo role was not provisioned: ${error.message}`);
   if (!isRecord(data) || data.user_id !== input.userId || data.role !== input.role ||
-      (input.role === 'hospital_approver' && data.hospital_id !== input.hospitalId) ||
-      (input.role !== 'hospital_approver' && data.hospital_id !== null)) {
+      (hospitalRole && data.hospital_id !== input.hospitalId) ||
+      (!hospitalRole && data.hospital_id !== null)) {
     throw new Error('No verified demo role result was returned. Refresh and verify the account role.');
   }
 }
 
 export const RESTRICTED_DEMO_ROLES: ReadonlyArray<{ role: DemoProvisionableRole; label: string }> = [
   { role: 'clinician_reviewer', label: 'Clinician Reviewer' },
+  { role: 'hospital_admin', label: 'Hospital Admin' },
   { role: 'hospital_approver', label: 'Hospital Approver' },
   { role: 'government_admin', label: 'District Coordinator' }
 ];
