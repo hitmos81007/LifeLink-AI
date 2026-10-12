@@ -105,6 +105,7 @@ export interface SignupPayload {
   full_name: string;
   phone?: string | null;
   role: UserRole;
+  location_label: string;
   // Hospital registration fields
   hospital_name?: string;
   hospital_address?: string;
@@ -137,6 +138,7 @@ export async function signUpWithSupabase(payload: SignupPayload): Promise<Supaba
         full_name: payload.full_name,
         phone: payload.phone || null,
         role: 'hospital_admin',
+        location_label: payload.location_label,
         hospital_name: payload.hospital_name,
         hospital_address: payload.hospital_address,
         district: payload.district,
@@ -151,6 +153,7 @@ export async function signUpWithSupabase(payload: SignupPayload): Promise<Supaba
         full_name: payload.full_name,
         phone: payload.phone || null,
         role: 'ambulance_admin',
+        location_label: payload.location_label,
         provider_name: payload.provider_name,
         district: payload.district,
         state: payload.state,
@@ -160,6 +163,7 @@ export async function signUpWithSupabase(payload: SignupPayload): Promise<Supaba
         full_name: payload.full_name,
         phone: payload.phone || null,
         role: 'blood_bank_admin',
+        location_label: payload.location_label,
         blood_bank_name: payload.blood_bank_name,
         blood_bank_address: payload.blood_bank_address,
         district: payload.district,
@@ -172,6 +176,7 @@ export async function signUpWithSupabase(payload: SignupPayload): Promise<Supaba
         full_name: payload.full_name,
         phone: payload.phone || null,
         role: payload.role,
+        location_label: payload.location_label,
       };
     }
 

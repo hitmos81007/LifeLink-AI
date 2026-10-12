@@ -21,6 +21,7 @@ export const LoginPage: React.FC = () => {
   const [resendStatus, setResendStatus] = useState<string | null>(null);
   const displayedError = localError || authError;
   const confirmationRequired = Boolean(displayedError?.includes('Email not confirmed'));
+  const providerApprovalPending = Boolean(displayedError?.includes('awaiting platform verification'));
 
   const handleResendConfirmation = async () => {
     if (!email) {
@@ -102,14 +103,17 @@ export const LoginPage: React.FC = () => {
           )}
 
           {(localError || authError) && (
-            <div className={`${confirmationRequired ? 'bg-emerald-950/80 border-emerald-800 text-emerald-200' : 'bg-rose-950/80 border-rose-800 text-rose-200'} border p-3 rounded-xl text-xs space-y-2 animate-in fade-in`}>
+            <div className={`${confirmationRequired || providerApprovalPending ? 'bg-emerald-950/80 border-emerald-800 text-emerald-200' : 'bg-rose-950/80 border-rose-800 text-rose-200'} border p-3 rounded-xl text-xs space-y-2 animate-in fade-in`}>
               <div className="flex items-start gap-2.5">
-                {confirmationRequired
+                {confirmationRequired || providerApprovalPending
                   ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   : <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />}
                 <div>
-                  <p className="font-bold">{confirmationRequired ? 'Email confirmation required' : 'Authentication Failed'}</p>
-                  <p className={`text-[11px] ${confirmationRequired ? 'text-emerald-300' : 'text-rose-300'}`}>{displayedError}</p>
+                  <p className="font-bold">{confirmationRequired ? 'Email confirmation required' : providerApprovalPending ? 'Provider approval pending' : 'Authentication Failed'}</p>
+                  <p className={`text-[11px] ${confirmationRequired || providerApprovalPending ? 'text-emerald-300' : 'text-rose-300'}`}>{displayedError}</p>
+                  {providerApprovalPending && (
+                    <p className="text-[11px] text-emerald-300 mt-1">Your password was accepted. A platform administrator must approve this provider account before dashboard access is enabled. You do not need to register again.</p>
+                  )}
                 </div>
               </div>
 

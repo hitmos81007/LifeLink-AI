@@ -23,6 +23,7 @@ export const SignupPage: React.FC = () => {
   const { signup, setViewMode, authError, clearAuthError } = useAuth();
 
   const [selectedRole, setSelectedRole] = useState<UserRole>('patient');
+  const [locationLabel, setLocationLabel] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -62,6 +63,11 @@ export const SignupPage: React.FC = () => {
 
     if (!email.trim()) {
       setLocalError('Please enter your email address.');
+      return;
+    }
+
+    if (locationLabel.trim().length < 2) {
+      setLocalError('Enter your city, town, or local area to continue.');
       return;
     }
 
@@ -158,6 +164,7 @@ export const SignupPage: React.FC = () => {
           full_name: fullName.trim(),
           phone: phone.trim() || null,
           role: 'hospital_admin',
+          location_label: locationLabel.trim(),
           hospital_name: hospitalName.trim(),
           hospital_address: hospitalAddress.trim(),
           district: district.trim(),
@@ -174,6 +181,7 @@ export const SignupPage: React.FC = () => {
           full_name: fullName.trim(),
           phone: phone.trim() || null,
           role: 'ambulance_admin',
+          location_label: locationLabel.trim(),
           provider_name: providerName.trim(),
           district: district.trim(),
           state: stateName.trim(),
@@ -185,6 +193,7 @@ export const SignupPage: React.FC = () => {
           full_name: fullName.trim(),
           phone: phone.trim() || null,
           role: 'blood_bank_admin',
+          location_label: locationLabel.trim(),
           blood_bank_name: bloodBankName.trim(),
           blood_bank_address: bloodBankAddress.trim(),
           district: district.trim(),
@@ -199,6 +208,7 @@ export const SignupPage: React.FC = () => {
           full_name: fullName.trim(),
           phone: phone.trim() || null,
           role: selectedRole,
+          location_label: locationLabel.trim(),
         });
       }
     } catch (err: any) {
@@ -301,6 +311,24 @@ export const SignupPage: React.FC = () => {
             </p>
           </div>
 
+          <div className="rounded-xl border border-slate-700/80 bg-slate-900/70 p-4 space-y-2">
+            <label htmlFor="signup-location" className="block text-xs font-bold text-slate-300 uppercase tracking-wider mono">
+              2. Your Location *
+            </label>
+            <p className="text-[11px] text-slate-400">Enter a city, town, or local area only. Do not enter a home address.</p>
+            <input
+              id="signup-location"
+              type="text"
+              required
+              minLength={2}
+              maxLength={120}
+              value={locationLabel}
+              onChange={(event) => setLocationLabel(event.target.value)}
+              className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. Avadi, Chennai"
+            />
+          </div>
+
           {/* Alert Message */}
           {successMessage && (
             <div className="bg-emerald-950/60 border border-emerald-800 text-emerald-200 p-3 rounded-xl text-xs" role="status">
@@ -321,7 +349,7 @@ export const SignupPage: React.FC = () => {
           {/* STEP 2: USER & ROLE DETAILS FORM */}
           <form onSubmit={handleSubmit} className="space-y-4 pt-2 border-t border-slate-700/60">
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mono">
-              2. Profile &amp; Account Credentials
+              3. Profile &amp; Account Credentials
             </label>
 
             {/* Full Name */}
