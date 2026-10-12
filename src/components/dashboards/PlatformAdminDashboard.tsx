@@ -28,6 +28,7 @@ export const PlatformAdminDashboard: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ account: ProviderAccountForReview; decision: ProviderDecision } | null>(null);
   const [reason, setReason] = useState('');
+  const [reviewFeedback, setReviewFeedback] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [demoOptions, setDemoOptions] = useState<DemoRoleOptions>({ accounts: [], hospitals: [] });
   const [demoProvisioningSchemaReady, setDemoProvisioningSchemaReady] = useState(true);
@@ -99,6 +100,7 @@ export const PlatformAdminDashboard: React.FC = () => {
 
   const requestDecision = (account: ProviderAccountForReview, decision: ProviderDecision) => {
     setNotice(null);
+    setReviewFeedback(null);
     setReason('');
     setSelected({ account, decision });
   };
@@ -107,14 +109,18 @@ export const PlatformAdminDashboard: React.FC = () => {
     if (!selected || reason.trim().length < 3 || reason.trim().length > 500 || saving) return;
     setSaving(true);
     setError(null);
+    setReviewFeedback('Saving review…');
     try {
       await reviewProviderAccount(selected.account.user_id, selected.decision, reason);
       setNotice(`${selected.account.provider_name || 'Provider account'} is now ${selected.decision === 'activate' ? 'active' : selected.decision === 'suspend' ? 'suspended' : 'revoked'}.`);
+      setReviewFeedback(null);
       setSelected(null);
       setReason('');
       await load();
     } catch (err: any) {
-      setError(err?.message || 'Provider review could not be saved.');
+      const message = err?.message || 'Provider review could not be saved.';
+      setError(message);
+      setReviewFeedback(message);
     } finally {
       setSaving(false);
     }
@@ -201,6 +207,7 @@ export const PlatformAdminDashboard: React.FC = () => {
           <div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" /><div><h2 id="provider-review-confirm-heading" className="font-bold text-white">Confirm: {decisionLabel[selected.decision]}</h2><p className="mt-1 text-xs text-slate-300">{selected.account.provider_name || 'Unlinked provider profile'} • {selected.account.email}. This changes provider access and directory visibility.</p></div></div>
           <label className="block text-xs font-bold text-slate-200" htmlFor="provider-review-reason">Required review reason</label>
           <textarea id="provider-review-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} rows={3} className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-white outline-none focus:border-violet-500" placeholder="Record the verification evidence or reason for the access change." />
+          {reviewFeedback && <p className={`rounded-lg border p-3 text-sm ${saving ? 'border-sky-800 bg-sky-950/40 text-sky-200' : 'border-rose-800 bg-rose-950/40 text-rose-200'}`} role="status" aria-live="polite">{reviewFeedback}</p>}
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setSelected(null)} disabled={saving} className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-slate-800">Cancel</button>
             <button type="button" onClick={() => void confirmDecision()} disabled={saving || reason.trim().length < 3} className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving review…' : `Confirm ${selected.decision}`}</button>
