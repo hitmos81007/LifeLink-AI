@@ -20,6 +20,7 @@ const MassCasualtyGuestReporter = lazy(() => import('./components/mci/MassCasual
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
+import { PendingApprovalPage } from './components/auth/PendingApprovalPage';
 
 // Dashboards
 import { DashboardLayout } from './components/dashboards/DashboardLayout';
@@ -98,6 +99,15 @@ function MainAppContent() {
       <ErrorBoundary>
         <SupabaseStatusBanner />
         <ForgotPasswordPage />
+      </ErrorBoundary>
+    );
+  }
+
+  if (viewMode === 'pending-approval') {
+    return (
+      <ErrorBoundary>
+        <SupabaseStatusBanner />
+        <PendingApprovalPage />
       </ErrorBoundary>
     );
   }

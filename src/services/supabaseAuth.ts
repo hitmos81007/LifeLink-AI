@@ -157,6 +157,8 @@ export async function signUpWithSupabase(payload: SignupPayload): Promise<Supaba
         provider_name: payload.provider_name,
         district: payload.district,
         state: payload.state,
+        latitude: payload.latitude ?? null,
+        longitude: payload.longitude ?? null,
       };
     } else if (payload.role === 'blood_bank_admin') {
       metadata = {
@@ -177,6 +179,8 @@ export async function signUpWithSupabase(payload: SignupPayload): Promise<Supaba
         phone: payload.phone || null,
         role: payload.role,
         location_label: payload.location_label,
+        latitude: payload.latitude ?? null,
+        longitude: payload.longitude ?? null,
       };
     }
 

@@ -14,7 +14,7 @@ import {
   SignupPayload
 } from '../services/supabaseAuth';
 
-export type AuthViewMode = 'landing' | 'login' | 'signup' | 'forgot-password' | 'dashboard';
+export type AuthViewMode = 'landing' | 'login' | 'signup' | 'forgot-password' | 'pending-approval' | 'dashboard';
 
 interface AuthContextType {
   user: User | null;
@@ -83,6 +83,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (userId, fetchedProfile) => {
           if (!active || userId !== sessionUser.id || requestId !== profileRequestId.current) return;
           pendingProfileUserId = null;
+          if (fetchedProfile?.account_status === 'pending') {
+            loadedProfileUserId = sessionUser.id;
+            setUserProfile(fetchedProfile);
+            setProfileUnconfigured(false);
+            setAuthError(null);
+            setViewMode('pending-approval');
+            setLoading(false);
+            return;
+          }
           if (!isActiveUserProfile(fetchedProfile)) {
             loadedProfileUserId = null;
             setUser(null);
@@ -132,6 +141,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setUser(supRes.user);
     const fetchedProfile = await fetchSupabaseUserProfile(supRes.user.id);
+    if (fetchedProfile?.account_status === 'pending') {
+      setUserProfile(fetchedProfile);
+      setProfileUnconfigured(false);
+      setViewMode('pending-approval');
+      return fetchedProfile;
+    }
     
     if (!isActiveUserProfile(fetchedProfile)) {
       setProfileUnconfigured(!fetchedProfile);
@@ -181,6 +196,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Fetch the inserted users table row
     const fetchedProfile = await fetchSupabaseUserProfile(supRes.user.id);
+    if (fetchedProfile?.account_status === 'pending') {
+      setUserProfile(fetchedProfile);
+      setProfileUnconfigured(false);
+      setViewMode('pending-approval');
+      return fetchedProfile;
+    }
     if (!isActiveUserProfile(fetchedProfile)) {
       setProfileUnconfigured(!fetchedProfile);
       const msg = fetchedProfile

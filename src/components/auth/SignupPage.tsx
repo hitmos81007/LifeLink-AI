@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole, ROLE_OPTIONS } from '../../types/database';
 import { parseProviderSignupCoordinates } from '../../services/providerSignupCoordinates';
+import { LeafletEmergencyMap } from '../common/LeafletEmergencyMap';
 import {
   Activity,
   UserPlus,
@@ -81,19 +82,25 @@ export const SignupPage: React.FC = () => {
       return;
     }
 
-    let parsedLat: number | null = null;
-    let parsedLng: number | null = null;
-
-    if (selectedRole === 'hospital_admin' || selectedRole === 'blood_bank_admin') {
-      try {
-        const coordinates = parseProviderSignupCoordinates(latitudeInput, longitudeInput);
-        parsedLat = coordinates.latitude;
-        parsedLng = coordinates.longitude;
-      } catch (error) {
-        setLocalError(error instanceof Error ? error.message : 'Enter a valid facility coordinate pair.');
-        return;
+    let parsedLat: number;
+    let parsedLng: number;
+    try {
+      if (!latitudeInput.trim() || !longitudeInput.trim()) {
+        throw new Error('Use GPS or select your location on the map before creating your account.');
       }
+      const coordinates = parseProviderSignupCoordinates(latitudeInput, longitudeInput);
+      if (coordinates.latitude === null || coordinates.longitude === null) {
+        throw new Error('Use GPS or select your location on the map before creating your account.');
+      }
+      parsedLat = coordinates.latitude;
+      parsedLng = coordinates.longitude;
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : 'Choose a valid location on the map.');
+      return;
     }
+    // Keep patient profile coordinates approximate (~1 km); precise facility coordinates support resource discovery.
+    const signupLatitude = selectedRole === 'patient' ? Math.round(parsedLat * 100) / 100 : parsedLat;
+    const signupLongitude = selectedRole === 'patient' ? Math.round(parsedLng * 100) / 100 : parsedLng;
 
     if (selectedRole === 'hospital_admin') {
       if (!hospitalName.trim()) {
@@ -165,14 +172,14 @@ export const SignupPage: React.FC = () => {
           phone: phone.trim() || null,
           role: 'hospital_admin',
           location_label: locationLabel.trim(),
+          latitude: signupLatitude,
+          longitude: signupLongitude,
           hospital_name: hospitalName.trim(),
           hospital_address: hospitalAddress.trim(),
           district: district.trim(),
           state: stateName.trim(),
           hospital_type: hospitalType,
           trauma_center: traumaCenter,
-          latitude: parsedLat,
-          longitude: parsedLng,
         });
       } else if (selectedRole === 'ambulance_admin') {
         await signup({
@@ -182,6 +189,8 @@ export const SignupPage: React.FC = () => {
           phone: phone.trim() || null,
           role: 'ambulance_admin',
           location_label: locationLabel.trim(),
+          latitude: signupLatitude,
+          longitude: signupLongitude,
           provider_name: providerName.trim(),
           district: district.trim(),
           state: stateName.trim(),
@@ -198,8 +207,8 @@ export const SignupPage: React.FC = () => {
           blood_bank_address: bloodBankAddress.trim(),
           district: district.trim(),
           state: stateName.trim(),
-          latitude: parsedLat,
-          longitude: parsedLng,
+          latitude: signupLatitude,
+          longitude: signupLongitude,
         });
       } else {
         await signup({
@@ -209,6 +218,8 @@ export const SignupPage: React.FC = () => {
           phone: phone.trim() || null,
           role: selectedRole,
           location_label: locationLabel.trim(),
+          latitude: signupLatitude,
+          longitude: signupLongitude,
         });
       }
     } catch (err: any) {
@@ -315,7 +326,7 @@ export const SignupPage: React.FC = () => {
             <label htmlFor="signup-location" className="block text-xs font-bold text-slate-300 uppercase tracking-wider mono">
               2. Your Location *
             </label>
-            <p className="text-[11px] text-slate-400">Enter a city, town, or local area only. Do not enter a home address.</p>
+            <p className="text-[11px] text-slate-400">Enter a city, town, or local area only. Do not enter a home address. Use GPS or tap the CARTO map to set coordinates.</p>
             <input
               id="signup-location"
               type="text"
@@ -327,6 +338,29 @@ export const SignupPage: React.FC = () => {
               className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g. Avadi, Chennai"
             />
+            <div className="overflow-hidden rounded-xl border border-slate-700">
+              <LeafletEmergencyMap
+                center={[13.08, 80.27]}
+                zoom={6}
+                height="300px"
+                entities={[]}
+                selectableLocation
+                selectedLocation={latitudeInput && longitudeInput ? { lat: Number(latitudeInput), lng: Number(longitudeInput) } : null}
+                onLocationSelect={(point) => {
+                  setLatitudeInput(point.lat.toFixed(6));
+                  setLongitudeInput(point.lng.toFixed(6));
+                }}
+                locationSelectionHint="Use GPS or tap the map to set your signup location"
+                showGpsControl
+                initialBasemap="cartoVoyager"
+              />
+            </div>
+            <p className="font-mono text-[10px] text-slate-300" aria-live="polite">
+              {latitudeInput && longitudeInput
+                ? `Selected coordinates: ${Number(latitudeInput).toFixed(6)}, ${Number(longitudeInput).toFixed(6)}`
+                : 'No coordinates selected yet.'}
+            </p>
+            {selectedRole === 'patient' && <p className="text-[10px] text-slate-500">For patient privacy, the saved profile point is rounded to approximately 1 km.</p>}
           </div>
 
           {/* Alert Message */}
@@ -554,15 +588,16 @@ export const SignupPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Latitude & Longitude (Optional) */}
+                {/* GPS coordinates are required and are also selected in the shared map above. */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Latitude (Optional, -90 to 90)
+                      Latitude * (-90 to 90)
                     </label>
                     <input
                       type="number"
                       step="any"
+                      required
                       value={latitudeInput}
                       onChange={(e) => setLatitudeInput(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
@@ -571,11 +606,12 @@ export const SignupPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Longitude (Optional, -180 to 180)
+                      Longitude * (-180 to 180)
                     </label>
                     <input
                       type="number"
                       step="any"
+                      required
                       value={longitudeInput}
                       onChange={(e) => setLongitudeInput(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
@@ -709,15 +745,16 @@ export const SignupPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Latitude & Longitude (Optional) */}
+                {/* GPS coordinates are required and are also selected in the shared map above. */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Latitude (Optional, -90 to 90)
+                      Latitude * (-90 to 90)
                     </label>
                     <input
                       type="number"
                       step="any"
+                      required
                       value={latitudeInput}
                       onChange={(e) => setLatitudeInput(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
@@ -726,11 +763,12 @@ export const SignupPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Longitude (Optional, -180 to 180)
+                      Longitude * (-180 to 180)
                     </label>
                     <input
                       type="number"
                       step="any"
+                      required
                       value={longitudeInput}
                       onChange={(e) => setLongitudeInput(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"

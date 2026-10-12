@@ -181,6 +181,8 @@ export interface UserTable {
   email: string; // UNIQUE
   phone: string | null;
   signup_location_label?: string | null;
+  signup_latitude?: number | null;
+  signup_longitude?: number | null;
   role: UserRole;
   hospital_id: string | null; // FK -> hospitals.hospital_id
   blood_bank_id: string | null; // FK -> blood_banks.blood_bank_id
