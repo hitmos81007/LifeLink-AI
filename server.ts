@@ -4,7 +4,9 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { parseForecastExplanationInput } from "./src/services/forecastExplanationInput";
-dotenv.config();
+// Match the local setup documented in README: keep secrets in .env.local.
+// Vercel supplies GEMINI_API_KEY through its server-side environment instead.
+dotenv.config({ path: ['.env.local', '.env'] });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
