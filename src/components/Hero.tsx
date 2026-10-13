@@ -10,7 +10,7 @@ import {
   Clock,
   ExternalLink
 } from 'lucide-react';
-import { getPublicResourceDirectory } from '../services/publicResourceService';
+import { getPublicResourceDirectory, PublicAmbulanceProvider, PublicBloodBank } from '../services/publicResourceService';
 
 interface HeroProps {
   onExploreResources: () => void;
@@ -26,6 +26,9 @@ export const Hero: React.FC<HeroProps> = ({
   onOpenMciReport,
 }) => {
   const [exampleHospitalName, setExampleHospitalName] = useState('Example Hospital');
+  const [exampleBloodBank, setExampleBloodBank] = useState<PublicBloodBank | null>(null);
+  const [exampleAmbulanceProvider, setExampleAmbulanceProvider] = useState<PublicAmbulanceProvider | null>(null);
+  const exampleBloodStock = exampleBloodBank?.stock.find((item) => item.quantity != null) || exampleBloodBank?.stock[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -33,7 +36,10 @@ export const Hero: React.FC<HeroProps> = ({
       const provider = directory.hospitals.find((hospital) => /avadi\s+government/i.test(hospital.name))
         || directory.hospitals.find((hospital) => /avadi/i.test(`${hospital.name} ${hospital.district}`))
         || directory.hospitals[0];
-      if (!cancelled && provider?.name) setExampleHospitalName(provider.name);
+      if (cancelled) return;
+      if (provider?.name) setExampleHospitalName(provider.name);
+      setExampleBloodBank(directory.blood_banks[0] || null);
+      setExampleAmbulanceProvider(directory.ambulance_providers[0] || null);
     }).catch(() => {
       // Keep a neutral sample label if the public directory is unavailable.
     });
@@ -146,11 +152,11 @@ export const Hero: React.FC<HeroProps> = ({
                   </span>
                 </div>
                 <span className="px-2 py-0.5 text-[10px] mono font-bold rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  SYNTHETIC DATA
+                  DIRECTORY + SAMPLE
                 </span>
               </div>
 
-              {/* Static illustrative records, not live resource status */}
+              {/* Names and listed provider status come from the public directory. */}
               <div className="space-y-3">
                 
                 {/* 1. ICU Availability */}
@@ -178,13 +184,17 @@ export const Hero: React.FC<HeroProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">Example Blood Bank</p>
-                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">Sample record</span>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">{exampleBloodBank?.name || 'Example Blood Bank'}</p>
+                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">{exampleBloodBank ? 'Directory listing' : 'Sample record'}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Illustrative stock record • no units reserved</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {exampleBloodBank
+                          ? `${exampleBloodBank.district}, ${exampleBloodBank.state} · ${exampleBloodStock ? `${exampleBloodStock.blood_group}: ${exampleBloodStock.quantity ?? 'unknown'} ${exampleBloodStock.unit || 'units'} (${exampleBloodStock.availability_status || 'status unknown'})` : 'stock not listed'} · confirm directly`
+                          : 'Illustrative stock record • no units reserved'}
+                      </p>
                     </div>
                   </div>
-                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">Example</span>
+                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">{exampleBloodStock?.updated_at ? new Date(exampleBloodStock.updated_at).toLocaleDateString() : 'Example'}</span>
                 </div>
 
                 {/* 3. Ambulance Green Corridor */}
@@ -195,13 +205,17 @@ export const Hero: React.FC<HeroProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">Example Ambulance</p>
-                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">No live connection</span>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">{exampleAmbulanceProvider?.name || 'Example Ambulance Provider'}</p>
+                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">{exampleAmbulanceProvider ? 'Directory listing' : 'No live connection'}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Routing and traffic control are not connected</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {exampleAmbulanceProvider
+                          ? `${exampleAmbulanceProvider.district}, ${exampleAmbulanceProvider.state} · directory status: ${exampleAmbulanceProvider.availability_status}; no dispatch connection`
+                          : 'Routing and traffic control are not connected'}
+                      </p>
                     </div>
                   </div>
-                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">Example</span>
+                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">{exampleAmbulanceProvider?.available_units == null ? 'Example' : `${exampleAmbulanceProvider.available_units} listed units`}</span>
                 </div>
 
                 {/* 4. AI Triage Engine */}
@@ -226,7 +240,7 @@ export const Hero: React.FC<HeroProps> = ({
               <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 <span className="flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Sample scenario • No live hospital or city systems connected
+                  Public provider directory snapshot • stock and dispatch are not guaranteed current
                 </span>
                 <span className="mono text-[10px]">Sample only</span>
               </div>
