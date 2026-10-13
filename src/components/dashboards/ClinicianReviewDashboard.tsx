@@ -45,6 +45,7 @@ import { hasCapability, getRoleDisplayLabel } from '../../types/roles';
 import { LeafletEmergencyMap, MapEntity } from '../common/LeafletEmergencyMap';
 import { IncidentPlanningPanel } from '../mci/IncidentPlanningPanel';
 import { getResourceFreshness } from '../../services/resourceFreshness';
+import { calculateHaversineDistance } from '../../services/geoService';
 
 function isFacilityCompatibleWithRequest(
   hospital: ClinicalReviewNetwork['hospitals'][number],
@@ -75,6 +76,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
   const [recommendationErrorsMap, setRecommendationErrorsMap] = useState<Record<string, string>>({});
   const [unverifiedLegacyRequestCount, setUnverifiedLegacyRequestCount] = useState(0);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [refreshingRecommendationId, setRefreshingRecommendationId] = useState<string | null>(null);
 
@@ -186,12 +188,13 @@ export const ClinicianReviewDashboard: React.FC = () => {
           || null;
         if (selectedHospital) hospMap[req.request_id] = selectedHospital.hospital_id;
 
+        const requiredBloodUnits = req.requested_blood_units ?? 1;
         const compatibleBloodBanks = netData!.bloodBanks.filter((bank) => req.required_blood_group
           ? getResourceFreshness(bank.blood_updated_at?.[req.required_blood_group] ?? null, 'blood') === 'Fresh'
-            && Number(bank.blood_stock[req.required_blood_group] || 0) > Number(bank.blood_thresholds[req.required_blood_group] || 0)
+            && Number(bank.blood_stock[req.required_blood_group] || 0) - Number(bank.blood_thresholds[req.required_blood_group] || 0) >= requiredBloodUnits
           : Object.entries(bank.blood_stock).some(([group, units]) =>
               getResourceFreshness(bank.blood_updated_at?.[group] ?? null, 'blood') === 'Fresh'
-              && Number(units) > Number(bank.blood_thresholds[group] || 0)));
+              && Number(units) - Number(bank.blood_thresholds[group] || 0) >= requiredBloodUnits));
         const recommendedBloodBankId = recMap[req.request_id]?.[0]?.blood_bank_id;
         const selectedBloodBank = compatibleBloodBanks.find((bank) => bank.blood_bank_id === recommendedBloodBankId)
           || null;
@@ -228,6 +231,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
   // Handle Clinician Approval Action
   const handleApproveCase = async (req: PatientRequestTable) => {
     setProcessingId(req.request_id);
+    setActionError(null);
     try {
       if (!userProfile?.user_id) throw new Error('A signed-in clinician reviewer is required.');
       const urgency = selectedUrgencyMap[req.request_id];
@@ -253,7 +257,7 @@ export const ClinicianReviewDashboard: React.FC = () => {
       triggerToast(`Prototype review saved. No emergency dispatch occurred; blood units are not reserved by this workflow.`);
       await fetchData();
     } catch (err: any) {
-      alert('Approval error: ' + err.message);
+      setActionError(err?.message || 'Could not record the prototype assignment. Refresh the candidate data and try again.');
     } finally {
       setProcessingId(null);
     }
@@ -335,14 +339,24 @@ export const ClinicianReviewDashboard: React.FC = () => {
   const inspectedRequest = requests.find(r => r.request_id === inspectedRequestId) || requests[0];
   const inspectedRecs = inspectedRequest ? recommendationsMap[inspectedRequest.request_id] || [] : [];
   const hospitalsForRequest = (req: PatientRequestTable) => (facilityNetwork?.hospitals || [])
-    .filter((hospital) => isFacilityCompatibleWithRequest(hospital, req));
+    .filter((hospital) => isFacilityCompatibleWithRequest(hospital, req))
+    .map((hospital) => ({
+      ...hospital,
+      distanceKm: calculateHaversineDistance(req.latitude, req.longitude, hospital.latitude, hospital.longitude)
+    }))
+    .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY));
   const bloodBanksForRequest = (req: PatientRequestTable) => (facilityNetwork?.bloodBanks || [])
     .filter((bank) => req.required_blood_group
       ? getResourceFreshness(bank.blood_updated_at?.[req.required_blood_group] ?? null, 'blood') === 'Fresh'
-        && Number(bank.blood_stock[req.required_blood_group] || 0) > Number(bank.blood_thresholds[req.required_blood_group] || 0)
+        && Number(bank.blood_stock[req.required_blood_group] || 0) - Number(bank.blood_thresholds[req.required_blood_group] || 0) >= (req.requested_blood_units ?? 1)
       : Object.entries(bank.blood_stock).some(([group, units]) =>
           getResourceFreshness(bank.blood_updated_at?.[group] ?? null, 'blood') === 'Fresh'
-          && Number(units) > Number(bank.blood_thresholds[group] || 0)));
+          && Number(units) - Number(bank.blood_thresholds[group] || 0) >= (req.requested_blood_units ?? 1)))
+    .map((bank) => ({
+      ...bank,
+      distanceKm: calculateHaversineDistance(req.latitude, req.longitude, bank.latitude, bank.longitude)
+    }))
+    .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY));
   const availableAmbulances = (facilityNetwork?.ambulances || []).filter((ambulance) =>
     ambulance.status === 'Available' && getResourceFreshness(ambulance.updated_at ?? null, 'ambulance') === 'Fresh'
   );
@@ -374,6 +388,14 @@ export const ClinicianReviewDashboard: React.FC = () => {
         <div className="fixed top-20 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-emerald-400 text-xs font-bold animate-bounce">
           <CheckCircle2 className="w-5 h-5" />
           <span>{actionSuccess}</span>
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="fixed top-20 right-6 z-50 max-w-xl bg-rose-950 border border-rose-700 text-rose-100 px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold">
+          <div className="flex items-start justify-between gap-3">
+            <span>{actionError}</span>
+            <button type="button" aria-label="Dismiss error" onClick={() => setActionError(null)} className="text-rose-200 hover:text-white">×</button>
+          </div>
         </div>
       )}
 
@@ -603,10 +625,23 @@ export const ClinicianReviewDashboard: React.FC = () => {
                             <option value="">{hospitalsForRequest(req).length ? 'Select a compatible facility' : 'No compatible inventory recorded'}</option>
                             {hospitalsForRequest(req).map((h) => (
                               <option key={h.hospital_id} value={h.hospital_id}>
-                                🏥 {h.hospital_name} ({h.allocatable_icu_beds} allocatable ICU • {h.allocatable_general_beds} allocatable general • {h.available_oxygen_records} oxygen records above zero)
+                                🏥 {h.hospital_name}{h.distanceKm == null ? ' · distance unavailable' : ` · ${h.distanceKm} km`}
+                                {req.needs_icu ? ` · ${h.allocatable_icu_beds} ICU beds` : ''}
+                                {req.needs_general_bed ? ` · ${h.allocatable_general_beds} general beds` : ''}
+                                {req.needs_oxygen ? ` · ${h.available_oxygen_records} oxygen records` : ''}
                               </option>
                             ))}
                           </select>
+                          {hospitalsForRequest(req).length > 0 && (
+                            <p className="text-[10px] text-slate-400">Candidates are ordered by straight-line distance from the synthetic request point; if no distance is shown, that request or facility has no usable coordinates.</p>
+                          )}
+                          {hospitalsForRequest(req).length === 0 && (
+                            <p className="text-[10px] text-amber-300">
+                              {networkError
+                                ? `Resource candidates could not be loaded: ${networkError}`
+                                : 'No active hospital currently has enough recent inventory for every bed and oxygen need on this request. Refresh inventory or reduce the synthetic request quantity, then refresh this page.'}
+                            </p>
+                          )}
                         </div>
 
                         {req.needs_oxygen && <p className="text-[11px] text-slate-400">Positive oxygen inventory records are checked at review. No oxygen amount is assigned or reserved.</p>}
@@ -615,8 +650,9 @@ export const ClinicianReviewDashboard: React.FC = () => {
                           <label className="text-[11px] font-bold text-slate-300">Blood bank candidate · units are not reserved</label>
                           <select value={selectedBloodBankMap[req.request_id] || ''} disabled={bloodBanksForRequest(req).length === 0} onChange={(e) => setSelectedBloodBankMap(m => ({ ...m, [req.request_id]: e.target.value }))} className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white font-bold">
                             <option value="">{bloodBanksForRequest(req).length ? 'Select a bank with recorded stock' : `No recorded stock for ${req.required_blood_group || 'the requested group'}`}</option>
-                            {bloodBanksForRequest(req).map(bank => <option key={bank.blood_bank_id} value={bank.blood_bank_id}>{bank.blood_bank_name} · {req.required_blood_group ? `${bank.blood_stock[req.required_blood_group] || 0} recorded available ${req.required_blood_group} units` : 'stock above threshold'}</option>)}
+                            {bloodBanksForRequest(req).map(bank => <option key={bank.blood_bank_id} value={bank.blood_bank_id}>{bank.blood_bank_name}{bank.distanceKm == null ? ' · distance unavailable' : ` · ${bank.distanceKm} km`} · {req.required_blood_group ? `${bank.blood_stock[req.required_blood_group] || 0} recorded ${req.required_blood_group} units` : 'stock above threshold'}</option>)}
                           </select>
+                          {bloodBanksForRequest(req).length === 0 && <p className="text-[10px] text-amber-300">No active bank has fresh stock for {req.requested_blood_units ?? 1} {req.required_blood_group || 'requested'} unit(s) above its protected threshold. Stock is not reserved by this review.</p>}
                         </div>}
 
                         {/* Ambulance Selector if requested */}

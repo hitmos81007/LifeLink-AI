@@ -123,6 +123,20 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
     return () => { cancelled = true; };
   }, [showCreateModal, userHospitalId, resourceType, maxDistanceKm]);
 
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !submitting) setShowCreateModal(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showCreateModal, submitting]);
+
   const selectedStock = nearbySources.find((option) => option.key === selectedSourceKey);
   const freshnessCategory: ResourceCategory = resourceType === 'ICU Beds'
     ? 'icu'
@@ -292,18 +306,20 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
 
       {/* Create Transfer Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) setShowCreateModal(false); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="transfer-modal-title" className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-150 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+            <div className="sticky top-0 z-10 flex items-center justify-between -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 px-4 pt-4 sm:px-6 sm:pt-6 pb-3 bg-slate-900 border-b border-slate-800">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <ArrowRightLeft className="w-4 h-4 text-blue-400" />
-                <span>Create Hospital Resource Transfer Request</span>
+                <span id="transfer-modal-title">Create Hospital Resource Transfer Request</span>
               </div>
               <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg text-xs"
+                type="button"
+                onClick={() => !submitting && setShowCreateModal(false)}
+                aria-label="Close transfer request"
+                className="text-slate-300 hover:text-white p-2 rounded-lg text-xs border border-slate-700"
               >
-                ✕
+                Close
               </button>
             </div>
 
@@ -353,7 +369,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                 {nearbySources.length === 0 ? (
                   <div className="p-3 bg-slate-950 border border-amber-800/80 text-amber-300 rounded-xl text-xs flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>{stockLoading ? 'Searching nearby facilities…' : 'No transfer-ready source is available at this range. A source needs stock above its protected minimum and active hospital approver and admin accounts.'}</span>
+                    <span>{stockLoading ? 'Searching nearby facilities…' : 'No transfer-ready source is available at this range. A map marker only confirms a facility listing; a donor also needs uniquely identified seeded/simulated stock above its protected minimum, usable coordinates within this range, and active source hospital admin and approver accounts.'}</span>
                   </div>
                 ) : (
                   <select
@@ -369,7 +385,7 @@ export const ResourceTransferManager: React.FC<ResourceTransferManagerProps> = (
                     ))}
                   </select>
                 )}
-                <p className="text-[10px] text-slate-500">Your assigned hospital receives the request. Facilities are ranked nearest first; records without coordinates appear only when Any distance is selected.</p>
+                <p className="text-[10px] text-slate-500">Your assigned hospital receives the request. Facilities are ranked nearest first; records without coordinates appear only when Any distance is selected. A request is a prototype record and does not arrange transport.</p>
               </div>
 
               <div className="space-y-1">
