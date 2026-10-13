@@ -38,8 +38,9 @@ export const Hero: React.FC<HeroProps> = ({
         || directory.hospitals[0];
       const bloodBank = directory.blood_banks.find((bank) => /hitmos\s+blood\s+bank/i.test(bank.name))
         || directory.blood_banks[0];
-      const ambulanceProvider = directory.ambulance_providers.find((item) => /mrityunjay\s+resq\s+services/i.test(item.name))
-        || directory.ambulance_providers[0];
+      const ambulanceProvider = directory.ambulance_providers.find((item) =>
+        item.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes('mrityunjayresqservices'))
+        || null;
       if (cancelled) return;
       if (provider?.name) setExampleHospitalName(provider.name);
       setExampleBloodBank(bloodBank || null);
@@ -209,17 +210,17 @@ export const Hero: React.FC<HeroProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">{exampleAmbulanceProvider?.name || 'Example Ambulance Provider'}</p>
-                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">{exampleAmbulanceProvider ? 'Directory listing' : 'No live connection'}</span>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">{exampleAmbulanceProvider?.name || 'Mrityunjay ResQ Services'}</p>
+                        <span className="text-[10px] mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/60 px-1 rounded">{exampleAmbulanceProvider ? 'Directory listing' : 'Not in public directory'}</span>
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
                         {exampleAmbulanceProvider
                           ? `${exampleAmbulanceProvider.district}, ${exampleAmbulanceProvider.state} · directory status: ${exampleAmbulanceProvider.availability_status}; no dispatch connection`
-                          : 'Routing and traffic control are not connected'}
+                          : 'Provider is pending or inactive; unit availability and dispatch are not shown'}
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">{exampleAmbulanceProvider?.available_units == null ? 'Example' : `${exampleAmbulanceProvider.available_units} listed units`}</span>
+                  <span className="text-[10px] mono text-slate-400 dark:text-slate-500 font-medium">{exampleAmbulanceProvider?.available_units == null ? 'Not active' : `${exampleAmbulanceProvider.available_units} listed units`}</span>
                 </div>
 
                 {/* 4. AI Triage Engine */}
