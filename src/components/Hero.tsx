@@ -36,10 +36,14 @@ export const Hero: React.FC<HeroProps> = ({
       const provider = directory.hospitals.find((hospital) => /avadi\s+government/i.test(hospital.name))
         || directory.hospitals.find((hospital) => /avadi/i.test(`${hospital.name} ${hospital.district}`))
         || directory.hospitals[0];
+      const bloodBank = directory.blood_banks.find((bank) => /hitmos\s+blood\s+bank/i.test(bank.name))
+        || directory.blood_banks[0];
+      const ambulanceProvider = directory.ambulance_providers.find((item) => /mrityunjay\s+resq\s+services/i.test(item.name))
+        || directory.ambulance_providers[0];
       if (cancelled) return;
       if (provider?.name) setExampleHospitalName(provider.name);
-      setExampleBloodBank(directory.blood_banks[0] || null);
-      setExampleAmbulanceProvider(directory.ambulance_providers[0] || null);
+      setExampleBloodBank(bloodBank || null);
+      setExampleAmbulanceProvider(ambulanceProvider || null);
     }).catch(() => {
       // Keep a neutral sample label if the public directory is unavailable.
     });
