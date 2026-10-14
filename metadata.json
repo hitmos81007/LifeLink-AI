@@ -1,0 +1,6 @@
+{
+  "name": "LifeLink AI - Enterprise Healthcare Logistics Platform",
+  "description": "Enterprise-Grade AI Healthcare Logistics Platform connecting Patients, Hospitals, Blood Banks, Ambulance Providers, and Government Authorities.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
